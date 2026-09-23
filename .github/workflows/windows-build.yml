@@ -1,0 +1,158 @@
+name: windows-build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - request.json
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: Staged Helix build UUID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: helix-windows-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Read build request
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Resolve build id
+        id: request
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $BuildId = "${{ inputs.build_id }}"
+          } else {
+            $Request = Get-Content -LiteralPath request.json -Raw -Encoding UTF8 | ConvertFrom-Json
+            $BuildId = [string]$Request.build_id
+          }
+          if ($BuildId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+            throw "Invalid staged build id: $BuildId"
+          }
+          "build_id=$BuildId" >> $env:GITHUB_OUTPUT
+
+      - name: Claim exact source bundle
+        id: source
+        shell: pwsh
+        env:
+          BUILD_ID: "${{ steps.request.outputs.build_id }}"
+          HELIX_BUILD_URL: https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/helix-build
+        run: |
+          $Audience = [uri]::EscapeDataString('helix-supabase-build')
+          $OidcResponse = Invoke-RestMethod -Uri ($env:ACTIONS_ID_TOKEN_REQUEST_URL + '&audience=' + $Audience) -Headers @{ Authorization = 'Bearer ' + $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN }
+          $Oidc = [string]$OidcResponse.value
+          if ([string]::IsNullOrWhiteSpace($Oidc)) { throw 'GitHub OIDC token unavailable' }
+
+          $Body = @{
+            action = 'claim'
+            build_id = $env:BUILD_ID
+            oidc_token = $Oidc
+          } | ConvertTo-Json -Compress
+          $Response = Invoke-RestMethod -Method Post -Uri $env:HELIX_BUILD_URL -ContentType 'application/json' -Body $Body
+          if (-not $Response.ok) { throw ([string]$Response.error) }
+
+          $Build = $Response.build
+          if ([string]$Build.repo -ne 'omniphony') { throw 'Build repository rejected' }
+          if ([string]$Build.route -ne 'windows-product') { throw 'Build route rejected' }
+          if ([string]$Build.artifact -ne 'dist/OmniphonySetup.exe') { throw 'Artifact contract rejected' }
+
+          $Root = Join-Path $env:RUNNER_TEMP 'helix-build'
+          $Parts = Join-Path $Root 'parts'
+          New-Item -ItemType Directory -Force -Path $Parts | Out-Null
+          $Bundle = Join-Path $Root 'source.tar.gz'
+          $Output = [System.IO.File]::Open($Bundle, [System.IO.FileMode]::Create)
+          try {
+            foreach ($Chunk in ($Build.chunks | Sort-Object index)) {
+              $Part = Join-Path $Parts ('part-{0:D5}.bin' -f [int]$Chunk.index)
+              Invoke-WebRequest -Uri ([string]$Chunk.signed_url) -OutFile $Part
+              $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Part).Hash.ToLowerInvariant()
+              if ($Hash -ne ([string]$Chunk.sha256).ToLowerInvariant()) {
+                throw "Chunk checksum mismatch at index $($Chunk.index)"
+              }
+              $Bytes = [System.IO.File]::ReadAllBytes($Part)
+              $Output.Write($Bytes, 0, $Bytes.Length)
+            }
+          } finally {
+            $Output.Dispose()
+          }
+
+          $BundleHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Bundle).Hash.ToLowerInvariant()
+          if ($BundleHash -ne ([string]$Build.sha256).ToLowerInvariant()) {
+            throw 'Source bundle checksum mismatch'
+          }
+
+          tar -xzf $Bundle -C $Root
+          if ($LASTEXITCODE -ne 0) { throw "Source extraction failed: $LASTEXITCODE" }
+
+          $Manifest = Get-Content -LiteralPath (Join-Path $Root '.helix-build.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ([string]$Manifest.repo -ne 'omniphony' -or [string]$Manifest.route -ne 'windows-product') {
+            throw 'Extracted build manifest rejected'
+          }
+          if ([string]$Manifest.base_sha -ne [string]$Build.base_sha) {
+            throw 'Build manifest base SHA mismatch'
+          }
+
+          $ShortSha = ([string]$Build.base_sha).Substring(0, 8)
+          "source_dir=$($Root + '\source')" >> $env:GITHUB_OUTPUT
+          "artifact=$($Root + '\source\dist\OmniphonySetup.exe')" >> $env:GITHUB_OUTPUT
+          "short_sha=$ShortSha" >> $env:GITHUB_OUTPUT
+
+      - name: Build Omniphony Windows product
+        shell: pwsh
+        working-directory: "${{ steps.source.outputs.source_dir }}"
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows-product.ps1
+
+      - name: Verify product artifact
+        shell: pwsh
+        env:
+          ARTIFACT: "${{ steps.source.outputs.artifact }}"
+        run: |
+          if (-not (Test-Path -LiteralPath $env:ARTIFACT -PathType Leaf)) {
+            throw "Expected artifact missing: $env:ARTIFACT"
+          }
+          $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $env:ARTIFACT).Hash.ToLowerInvariant()
+          $Bytes = (Get-Item -LiteralPath $env:ARTIFACT).Length
+          Write-Host "HELIX_WINDOWS_BUILD_OK bytes=$Bytes sha256=$Hash"
+
+      - name: Upload Windows product
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: "omniphony-${{ steps.source.outputs.short_sha }}"
+          path: "${{ steps.source.outputs.artifact }}"
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Remove staged source
+        if: always() && steps.request.outputs.build_id != ''
+        shell: pwsh
+        env:
+          BUILD_ID: "${{ steps.request.outputs.build_id }}"
+          HELIX_BUILD_URL: https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/helix-build
+        run: |
+          try {
+            $Audience = [uri]::EscapeDataString('helix-supabase-build')
+            $OidcResponse = Invoke-RestMethod -Uri ($env:ACTIONS_ID_TOKEN_REQUEST_URL + '&audience=' + $Audience) -Headers @{ Authorization = 'Bearer ' + $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN }
+            $Body = @{
+              action = 'complete'
+              build_id = $env:BUILD_ID
+              oidc_token = [string]$OidcResponse.value
+            } | ConvertTo-Json -Compress
+            Invoke-RestMethod -Method Post -Uri $env:HELIX_BUILD_URL -ContentType 'application/json' -Body $Body | Out-Null
+          } catch {
+            Write-Warning "Staged-source cleanup failed"
+          }
