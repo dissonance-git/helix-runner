@@ -109,10 +109,13 @@ jobs:
           "source_dir=$($Root + '\source')" >> $env:GITHUB_OUTPUT
           "artifact=$($Root + '\source\dist\OmniphonySetup.exe')" >> $env:GITHUB_OUTPUT
           "short_sha=$ShortSha" >> $env:GITHUB_OUTPUT
+          "base_sha=$([string]$Build.base_sha)" >> $env:GITHUB_OUTPUT
 
       - name: Build Omniphony Windows product
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
+        env:
+          OMNIPHONY_SOURCE_SHA: "${{ steps.source.outputs.base_sha }}"
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows-product.ps1
 
