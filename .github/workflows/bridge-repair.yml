@@ -1,0 +1,110 @@
+name: bridge-repair
+
+on:
+  push:
+    paths:
+      - ".github/workflows/bridge-repair.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out runner control surface
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Generate one-time transport key
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out /tmp/bridge-private.pem
+          openssl pkey -in /tmp/bridge-private.pem -pubout -out /tmp/bridge-public.pem
+
+      - name: Publish public half
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: bridge-public-key-${{ github.run_id }}
+          path: /tmp/bridge-public.pem
+          retention-days: 1
+          compression-level: 0
+
+      - name: Wait for encrypted target
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for _ in $(seq 1 120); do
+            git fetch -q origin main || true
+            if git show origin/main:bridge-request.json >/tmp/bridge-request.json 2>/dev/null; then
+              if python3 - <<'PY'
+import json, os, sys
+p=json.load(open('/tmp/bridge-request.json','r',encoding='utf-8'))
+sys.exit(0 if str(p.get('run_id')) == os.environ['GITHUB_RUN_ID'] else 1)
+PY
+              then
+                found=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+          test "$found" = 1
+
+      - name: Decrypt ephemeral SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+import base64, json
+p=json.load(open('/tmp/bridge-request.json','r',encoding='utf-8'))
+open('/tmp/bridge-pass.enc','wb').write(base64.b64decode(p['encrypted_passphrase']))
+open('/tmp/bridge-ssh-key.enc','wb').write(base64.b64decode(p['encrypted_ssh_key']))
+open('/tmp/bridge-ip','w',encoding='utf-8').write(p['ip'])
+PY
+          openssl pkeyutl -decrypt \
+            -inkey /tmp/bridge-private.pem \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -in /tmp/bridge-pass.enc \
+            -out /tmp/bridge-pass
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 100000 \
+            -in /tmp/bridge-ssh-key.enc \
+            -out /tmp/bridge-ssh-key \
+            -pass file:/tmp/bridge-pass
+          chmod 600 /tmp/bridge-ssh-key
+
+      - name: Repair disposable source bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          ip="$(cat /tmp/bridge-ip)"
+          ssh -i /tmp/bridge-ssh-key \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=20 \
+            root@"$ip" 'set -euo pipefail
+              systemctl stop helix-workspace.service || true
+              cd /srv/helix/Helix
+              git fetch --prune origin main
+              git checkout -B main origin/main
+              git reset --hard origin/main
+              git clean -fd
+              printf "HELIX_HEAD="
+              git rev-parse HEAD
+              systemctl daemon-reload
+              systemctl restart helix-workspace.service
+              sleep 2
+              systemctl --no-pager --full status helix-workspace.service
+            '
+
+      - name: Destroy ephemeral key material
+        if: always()
+        shell: bash
+        run: |
+          rm -f /tmp/bridge-private.pem /tmp/bridge-public.pem /tmp/bridge-pass /tmp/bridge-pass.enc /tmp/bridge-ssh-key /tmp/bridge-ssh-key.enc /tmp/bridge-request.json /tmp/bridge-ip
