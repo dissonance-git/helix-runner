@@ -13,8 +13,9 @@ This repository is a disposable build-control surface, not a project source repo
 - Build artifacts are outputs, not repository state.
 - Keep the repository surface minimal; if a file does not support the build boundary directly, it does not belong here.
 
-- Ordinary execution must use standard GitHub-hosted runners. Do not require GitLab Runner, a self-hosted GitHub runner, or another user-installed CI worker.
+- Ordinary execution must use standard GitHub-hosted runners. Do not require provider-installed or user-managed CI workers.
 - Prefer the cheapest sufficient hosted image: use Windows only for Windows-specific work and host-agnostic images when they satisfy the route.
 - Every workflow must have bounded timeouts and concurrency. Superseded request-driven jobs should cancel instead of consuming runner time.
 - Keep artifact retention short and upload only the declared result. Do not use Actions artifacts as a long-term data store.
 - A route that needs software unavailable on standard hosted runners must degrade to an honest hosted verifier or remain explicitly unavailable; never silently turn machine-local state into a prerequisite.
+- All third-party actions must be pinned to an immutable full commit SHA.
