@@ -199,7 +199,7 @@ def main() -> int:
                 }
             )
             completed = subprocess.run(
-                [sys.executable, str(helix / "workspace" / "worker.py"), "once", "--job-id", job_id],
+                [sys.executable, str(helix / "service" / "workspace" / "worker.py"), "once", "--job-id", job_id],
                 env=env,
             )
             if completed.returncode != 0:
