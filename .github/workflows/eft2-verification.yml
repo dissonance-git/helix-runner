@@ -15,6 +15,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  attestations: write
 
 concurrency:
   group: helix-eft2-verification
@@ -144,6 +145,11 @@ jobs:
           $Bytes = (Get-Item -LiteralPath $env:ARTIFACT).Length
           if ($Bytes -gt 209715200) { throw "Artifact exceeds 200 MiB storage guard: $Bytes bytes" }
           Write-Host "HELIX_EFT2_VERIFICATION_OK bytes=$Bytes sha256=$Hash"
+
+      - name: Attest EFT2 verification provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: "${{ steps.source.outputs.artifact }}"
 
       - name: Upload EFT2 verification evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
