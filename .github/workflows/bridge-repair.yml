@@ -43,10 +43,10 @@ jobs:
             git fetch -q origin main || true
             if git show origin/main:bridge-request.json >/tmp/bridge-request.json 2>/dev/null; then
               if python3 - <<'PY'
-import json, os, sys
-p=json.load(open('/tmp/bridge-request.json','r',encoding='utf-8'))
-sys.exit(0 if str(p.get('run_id')) == os.environ['GITHUB_RUN_ID'] else 1)
-PY
+          import json, os, sys
+          p=json.load(open('/tmp/bridge-request.json','r',encoding='utf-8'))
+          sys.exit(0 if str(p.get('run_id')) == os.environ['GITHUB_RUN_ID'] else 1)
+          PY
               then
                 found=1
                 break
@@ -61,12 +61,12 @@ PY
         run: |
           set -euo pipefail
           python3 - <<'PY'
-import base64, json
-p=json.load(open('/tmp/bridge-request.json','r',encoding='utf-8'))
-open('/tmp/bridge-pass.enc','wb').write(base64.b64decode(p['encrypted_passphrase']))
-open('/tmp/bridge-ssh-key.enc','wb').write(base64.b64decode(p['encrypted_ssh_key']))
-open('/tmp/bridge-ip','w',encoding='utf-8').write(p['ip'])
-PY
+          import base64, json
+          p=json.load(open('/tmp/bridge-request.json','r',encoding='utf-8'))
+          open('/tmp/bridge-pass.enc','wb').write(base64.b64decode(p['encrypted_passphrase']))
+          open('/tmp/bridge-ssh-key.enc','wb').write(base64.b64decode(p['encrypted_ssh_key']))
+          open('/tmp/bridge-ip','w',encoding='utf-8').write(p['ip'])
+          PY
           openssl pkeyutl -decrypt \
             -inkey /tmp/bridge-private.pem \
             -pkeyopt rsa_padding_mode:oaep \
