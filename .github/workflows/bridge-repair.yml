@@ -90,17 +90,32 @@ jobs:
             -o ConnectTimeout=20 \
             root@"$ip" 'set -euo pipefail
               systemctl stop helix-workspace.service || true
-              cd /srv/helix/Helix
-              git fetch --prune origin main
-              git checkout -B main origin/main
-              git reset --hard origin/main
-              git clean -fd
+              old_env=/etc/helix-workspace.env
+              if [ -f "$old_env" ]; then
+                set -a
+                . "$old_env"
+                set +a
+              fi
+              if [ ! -d /srv/helix/helix/.git ]; then
+                rm -rf /srv/helix/helix
+                git clone --depth 1 --filter=blob:none --no-checkout git@gitlab.com:dissonance-git/helix.git /srv/helix/helix
+                git -C /srv/helix/helix sparse-checkout init --no-cone
+                git -C /srv/helix/helix sparse-checkout set --no-cone "/*" "!/library/sources/"
+                git -C /srv/helix/helix checkout main
+              else
+                git -C /srv/helix/helix fetch --prune origin main
+                git -C /srv/helix/helix checkout -B main origin/main
+                git -C /srv/helix/helix reset --hard origin/main
+                git -C /srv/helix/helix clean -fd
+              fi
+              : "${HELIX_WORKSPACE_URL:?missing HELIX_WORKSPACE_URL in /etc/helix-workspace.env}"
+              HELIX_WORKSPACE_TOKEN="${HELIX_WORKSPACE_TOKEN-}" \
+              HELIX_WORKSPACE_WORKER_ID="${HELIX_WORKSPACE_WORKER_ID-github-actions}" \
+              /srv/helix/helix/service/workspace/install.sh "$HELIX_WORKSPACE_URL" "" /srv/helix
               printf "HELIX_HEAD="
-              git rev-parse HEAD
-              systemctl daemon-reload
-              systemctl restart helix-workspace.service
-              sleep 2
+              git -C /srv/helix/helix rev-parse HEAD
               systemctl --no-pager --full status helix-workspace.service
+              rm -rf /srv/helix/Helix /srv/helix/helix-api
             '
 
       - name: Destroy ephemeral key material
