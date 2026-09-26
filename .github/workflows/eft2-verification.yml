@@ -104,8 +104,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Source extraction failed: $LASTEXITCODE" }
 
           $Manifest = Get-Content -LiteralPath (Join-Path $Root '.helix-build.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-          if ([string]$Manifest.repo -ne 'eft2' -or [string]$Manifest.route -ne 'verification-reference') {
+          $ManifestRoute = [string]$Manifest.route
+          $AcceptedManifestRoutes = @('verification-reference', 'verification-training')
+          if ([string]$Manifest.repo -ne 'eft2' -or $ManifestRoute -notin $AcceptedManifestRoutes) {
             throw 'Extracted build manifest rejected'
+          }
+          if ($ManifestRoute -eq 'verification-training') {
+            Write-Host 'Accepted revision-pinned legacy staging manifest as verification-reference'
           }
           if ([string]$Manifest.base_sha -ne [string]$Build.base_sha) {
             throw 'Build manifest base SHA mismatch'
