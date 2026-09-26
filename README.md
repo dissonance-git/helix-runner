@@ -1,10 +1,33 @@
 # helix-runner
 
-Public Windows execution host for the Helix ecosystem.
+Public ephemeral execution host for the Helix ecosystem.
 
-This repository is **not** a source mirror, project workspace, validation authority, or alternate publication line. Canonical project bytes remain in their project repositories. This repo exists only to execute exact candidate bundles staged by the Helix workspace on the Windows host appropriate to each route.
+This repository is **not** a source mirror, project workspace, validation authority, or alternate publication line. Canonical project bytes remain in GitLab. The repository carries only small control code and opaque request identifiers that wake standard GitHub-hosted runners.
 
-## Flow
+## Generic hosted workspace
+
+Ordinary Helix repository work uses `.github/workflows/workspace.yml` on
+`ubuntu-24.04`. A request changes only `workspace-request.json`, which contains
+an opaque Helix job UUID. GitHub OIDC authenticates that exact workflow to the
+private Supabase workspace broker. The runner downloads a checksum-bound private
+source snapshot, reconstructs a disposable local Git base, and invokes the
+canonical Helix `workspace/worker.py once --job-id ...` implementation.
+
+The public repository never receives project source, a GitLab credential, a
+Supabase service-role key, or a persistent worker token. The run-scoped worker
+identity is minted after OIDC verification and retired when the job exits.
+
+```text
+Helix compound task
+→ private source staging
+→ opaque workspace-request.json job id
+→ GitHub-hosted ubuntu-24.04
+→ GitHub OIDC → Supabase source broker
+→ canonical workspace/worker.py one-shot execution
+→ result back to the Helix job ledger
+```
+
+## Windows build flow
 
 ```text
 Helix hosted workspace
