@@ -29,13 +29,13 @@ omniphony / windows-product
 → ci/windows-product.ps1
 → dist/OmniphonySetup.exe
 
-eft2 / verification-training
-→ self-hosted Windows x64 machine with s&box Source Authoring Layer
-→ tools/run-verification.ps1 training
+eft2 / verification-reference
+→ GitHub-hosted windows-latest
+→ tools/run-verification.ps1 reference
 → dist/EFT2Verification.zip
 ```
 
-Omniphony uses disposable GitHub-hosted Windows because its build is self-contained. EFT2 deliberately does **not** use that host: exact-runtime verification requires the real s&box editor/runtime (`game\hammer.exe`). Its workflow therefore targets `[self-hosted, Windows, X64]` and fails closed if the machine-local s&box root is unavailable.
+Both active routes use disposable standard GitHub-hosted runners. EFT2's hosted route is intentionally limited to the strongest engine-independent reference verification available on a clean runner. Exact s&box editor/runtime verification remains a distinct capability and is not assumed to exist on the user's machine or on a permanent runner.
 
 A build is requested by replacing the route's request file with the staged build UUID:
 
@@ -44,4 +44,4 @@ A build is requested by replacing the route's request file with the staged build
 
 Both workflows can also be started manually with the same staged UUID.
 
-This repository should remain tiny. New routes must be explicit, allowlisted end to end, tied to a fixed artifact contract, and assigned only to hosts that actually possess the required runtime.
+This repository should remain tiny. New routes must be explicit, allowlisted end to end, tied to a fixed artifact contract, and runnable on standard GitHub-hosted infrastructure unless a future capability is explicitly provisioned. Prefer bounded jobs, cancellation of superseded requests, short artifact retention, and no persistent runner state.

@@ -22,8 +22,8 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 180
+    runs-on: windows-latest
+    timeout-minutes: 30
 
     steps:
       - name: Read verification request
@@ -66,7 +66,7 @@ jobs:
 
           $Build = $Response.build
           if ([string]$Build.repo -ne 'eft2') { throw 'Build repository rejected' }
-          if ([string]$Build.route -ne 'verification-training') { throw 'Build route rejected' }
+          if ([string]$Build.route -ne 'verification-reference') { throw 'Build route rejected' }
           if ([string]$Build.artifact -ne 'dist/EFT2Verification.zip') { throw 'Artifact contract rejected' }
 
           $Root = Join-Path $env:RUNNER_TEMP 'helix-eft2-verification'
@@ -99,7 +99,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Source extraction failed: $LASTEXITCODE" }
 
           $Manifest = Get-Content -LiteralPath (Join-Path $Root '.helix-build.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-          if ([string]$Manifest.repo -ne 'eft2' -or [string]$Manifest.route -ne 'verification-training') {
+          if ([string]$Manifest.repo -ne 'eft2' -or [string]$Manifest.route -ne 'verification-reference') {
             throw 'Extracted build manifest rejected'
           }
           if ([string]$Manifest.base_sha -ne [string]$Build.base_sha) {
@@ -114,36 +114,15 @@ jobs:
           "short_sha=$ShortSha" >> $env:GITHUB_OUTPUT
           "base_sha=$([string]$Build.base_sha)" >> $env:GITHUB_OUTPUT
 
-      - name: Verify s&box-capable host
-        shell: pwsh
-        working-directory: "${{ steps.source.outputs.source_dir }}"
-        run: |
-          $Candidates = @()
-          if ($env:EFT2_SBOX_ROOT) { $Candidates += $env:EFT2_SBOX_ROOT }
-          $StateFile = Join-Path $HOME '.helix\state\eft2\sbox-root.txt'
-          if (Test-Path -LiteralPath $StateFile) {
-            $Candidates += (Get-Content -LiteralPath $StateFile -TotalCount 1).Trim()
-          }
-          $Found = $false
-          foreach ($Candidate in $Candidates) {
-            if ($Candidate -and (Test-Path -LiteralPath (Join-Path $Candidate 'game\hammer.exe') -PathType Leaf)) {
-              $Found = $true
-              break
-            }
-          }
-          if (-not $Found) {
-            throw 'This EFT2 route requires the self-hosted Windows s&box machine (game\hammer.exe). Hosted Windows is intentionally unsupported.'
-          }
-
-      - name: Run exact-runtime recursive training smoke
+      - name: Run strongest free-hosted EFT2 verification
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
           $Output = Join-Path (Get-Location) 'dist\verification'
           New-Item -ItemType Directory -Force -Path $Output | Out-Null
-          & pwsh -NoProfile -ExecutionPolicy Bypass -File tools/run-verification.ps1 training -OutputDir $Output
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File tools/run-verification.ps1 reference -OutputDir $Output
           if ($LASTEXITCODE -ne 0) {
-            throw "EFT2 exact-runtime training verification failed: $LASTEXITCODE"
+            throw "EFT2 reference verification failed: $LASTEXITCODE"
           }
 
           $Artifact = Join-Path (Get-Location) 'dist\EFT2Verification.zip'
@@ -168,7 +147,7 @@ jobs:
           name: "eft2-verification-${{ steps.source.outputs.short_sha }}"
           path: "${{ steps.source.outputs.artifact }}"
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
           compression-level: 0
 
       - name: Remove staged source
