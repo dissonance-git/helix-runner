@@ -186,6 +186,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       actions: read
+      attestations: read
       contents: write
     env:
       GH_TOKEN: "${{ github.token }}"
@@ -195,9 +196,14 @@ jobs:
       - name: Download verified installer
         run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "omniphony-$SHORT_SHA"
 
-      - name: Publish immutable source-addressed release
+      - name: Verify provenance before promotion
         run: |
           test -f OmniphonySetup.exe
+          gh attestation verify OmniphonySetup.exe --repo "$GITHUB_REPOSITORY"
+          sha256sum OmniphonySetup.exe > OmniphonySetup.exe.sha256
+
+      - name: Publish immutable source-addressed release
+        run: |
           TAG="omniphony-$SOURCE_SHA"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists; refusing to mutate it."
