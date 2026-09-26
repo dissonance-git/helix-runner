@@ -22,12 +22,14 @@ concurrency:
 
 jobs:
   build:
-    runs-on: windows-latest
-    timeout-minutes: 45
+    runs-on: windows-2025
+    timeout-minutes: 30
 
     steps:
       - name: Read build request
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
 
       - name: Resolve build id
         id: request
@@ -93,6 +95,7 @@ jobs:
           if ($BundleHash -ne ([string]$Build.sha256).ToLowerInvariant()) {
             throw 'Source bundle checksum mismatch'
           }
+          Remove-Item -LiteralPath $Parts -Recurse -Force
 
           tar -xzf $Bundle -C $Root
           if ($LASTEXITCODE -ne 0) { throw "Source extraction failed: $LASTEXITCODE" }
@@ -129,6 +132,7 @@ jobs:
           }
           $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $env:ARTIFACT).Hash.ToLowerInvariant()
           $Bytes = (Get-Item -LiteralPath $env:ARTIFACT).Length
+          if ($Bytes -gt 209715200) { throw "Artifact exceeds 200 MiB storage guard: $Bytes bytes" }
           Write-Host "HELIX_WINDOWS_BUILD_OK bytes=$Bytes sha256=$Hash"
 
       - name: Upload Windows product
@@ -137,7 +141,7 @@ jobs:
           name: "omniphony-${{ steps.source.outputs.short_sha }}"
           path: "${{ steps.source.outputs.artifact }}"
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
           compression-level: 0
 
       - name: Remove staged source
