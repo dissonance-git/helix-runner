@@ -16,6 +16,7 @@ permissions:
   contents: read
   id-token: write
   attestations: write
+  artifact-metadata: write
 
 concurrency:
   group: helix-eft2-verification
