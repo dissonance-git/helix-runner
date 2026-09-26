@@ -11,6 +11,11 @@ on:
         description: Staged Helix build UUID
         required: true
         type: string
+      publish_release:
+        description: Promote the verified installer to a permanent GitHub Release
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -25,6 +30,9 @@ jobs:
   build:
     runs-on: windows-2025
     timeout-minutes: 30
+    outputs:
+      source_sha: "${{ steps.source.outputs.base_sha }}"
+      short_sha: "${{ steps.source.outputs.short_sha }}"
 
     steps:
       - name: Read build request
@@ -169,3 +177,29 @@ jobs:
           } catch {
             Write-Warning "Staged-source cleanup failed"
           }
+
+  release:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: "${{ github.token }}"
+      SOURCE_SHA: "${{ needs.build.outputs.source_sha }}"
+      SHORT_SHA: "${{ needs.build.outputs.short_sha }}"
+    steps:
+      - name: Download verified installer
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "omniphony-$SHORT_SHA"
+
+      - name: Publish immutable source-addressed release
+        run: |
+          test -f OmniphonySetup.exe
+          TAG="omniphony-$SOURCE_SHA"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to mutate it."
+            exit 1
+          fi
+          gh release create "$TAG" OmniphonySetup.exe             --repo "$GITHUB_REPOSITORY"             --target "$GITHUB_SHA"             --title "Omniphony $SHORT_SHA"             --notes "Verified Windows installer built from canonical Omniphony source $SOURCE_SHA. Build provenance is recorded by the associated GitHub artifact attestation."
