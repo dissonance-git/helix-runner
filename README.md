@@ -10,7 +10,7 @@ Ordinary Helix repository work uses `.github/workflows/workspace.yml` on
 `ubuntu-24.04`. A request changes only `workspace-request.json`, which contains
 an opaque Helix job UUID. GitHub OIDC authenticates that exact workflow to the
 private Supabase workspace broker. The runner downloads a checksum-bound private
-source snapshot, reconstructs a disposable local Git base, and invokes the
+source snapshot whose canonical central repository is `helix`, reconstructs a disposable local Git base, and invokes the
 canonical Helix `workspace/worker.py once --job-id ...` implementation.
 
 The public repository never receives project source, a GitLab credential, a
@@ -72,3 +72,5 @@ This repository should remain tiny. New routes must be explicit, allowlisted end
 ## Resource policy
 
 Standard GitHub-hosted runners are the only ordinary execution substrate. Workflows pin the Windows image family, cancel superseded request runs, persist no checkout credentials, retain artifacts for one day, and reject unexpectedly large outputs before upload. The runner repository intentionally uses no persistent cache because the staged candidate is authoritative and the current products are small enough that cache invalidation would add more risk than value.
+
+The retired `api` repository identity is not a source root. Compatibility environment variable names may still contain `API` while migration finishes, but all central source bytes and worker code come from the `helix` repository.
