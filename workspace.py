@@ -144,8 +144,8 @@ def _materialize(source: dict, root: Path) -> tuple[Path, dict[str, str]]:
     _safe_extract(bundle, extracted)
     manifest = json.loads((extracted / ".helix-workspace.json").read_text(encoding="utf-8"))
     repositories = manifest.get("repositories") or {}
-    if "api" not in repositories:
-        raise RuntimeError("workspace source has no api repository")
+    if "helix" not in repositories:
+        raise RuntimeError("workspace source has no helix repository")
 
     mapping: dict[str, str] = {}
     for key, meta in repositories.items():
@@ -165,7 +165,7 @@ def _materialize(source: dict, root: Path) -> tuple[Path, dict[str, str]]:
         remote = str(meta.get("remote") or "").strip() or "https://invalid.example/helix-workspace"
         _git(repo, "remote", "add", "origin", remote)
         mapping[str(key)] = str(repo)
-    return Path(mapping["api"]), mapping
+    return Path(mapping["helix"]), mapping
 
 
 def main() -> int:
@@ -180,7 +180,7 @@ def main() -> int:
         source = _source(job_id)
         with tempfile.TemporaryDirectory(prefix="helix-github-workspace-") as td:
             root = Path(td)
-            api, mapping = _materialize(source, root)
+            helix, mapping = _materialize(source, root)
             env = os.environ.copy()
             env.update(
                 {
@@ -189,7 +189,7 @@ def main() -> int:
                     "HELIX_WORKSPACE_TOKEN": worker_token,
                     "HELIX_WORKSPACE_REPOS": json.dumps(mapping, separators=(",", ":")),
                     "HELIX_WORKSPACE_REPOSITORY_OWNERSHIP": "operator",
-                    "HELIX_WORKSPACE_API_ROOT": str(api),
+                    "HELIX_WORKSPACE_API_ROOT": str(helix),
                     "HELIX_WORKSPACE_ROOT": str(root),
                     "HELIX_MACHINE_ROOT": str(root / ".helix"),
                     "HELIX_STATE_ROOT": str(root / ".helix" / "state"),
@@ -199,7 +199,7 @@ def main() -> int:
                 }
             )
             completed = subprocess.run(
-                [sys.executable, str(api / "workspace" / "worker.py"), "once", "--job-id", job_id],
+                [sys.executable, str(helix / "workspace" / "worker.py"), "once", "--job-id", job_id],
                 env=env,
             )
             if completed.returncode != 0:
