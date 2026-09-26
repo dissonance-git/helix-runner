@@ -2,7 +2,7 @@
 
 This repository is a disposable build-control surface, not a project source repository.
 
-- `main` is the only writable branch.
+- `main` is the only publication branch. Automated dependency-update branches may exist only as disposable review proposals.
 - Do not copy Helix project source into this repository.
 - Do not add persistent worker state, GitLab credentials, personal tokens, deploy keys, or machine-local secrets.
 - Build requests carry only opaque staged-build identifiers.
