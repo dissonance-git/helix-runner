@@ -1,0 +1,1 @@
+{"schema":"helix-windows-confinement-qualification-v1","run_id":"36297399306","runner_sha":"6fd2a029b2c492c3918fdf8fb179ba99be51ebe2","job_id":"9523cf41-a4d4-4f9c-bc83-167581c041ae","windows_build":26100,"donor":"microsoft/mxc","donor_sha":"e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085","build":"success","host_prep":"success","helix_execute":"failure","cleanup":"success"}
