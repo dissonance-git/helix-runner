@@ -90,7 +90,15 @@ jobs:
           & $Prep prepare-null-device --no-sacl --json
           if ($LASTEXITCODE -ne 0) { throw "prepare-null-device failed: $LASTEXITCODE" }
 
-      - name: Execute exact Helix workspace job
+      - name: Execute exact qualified Helix workspace job
+        if: steps.request.outputs.qualification == 'appcontainer'
+        shell: pwsh
+        env:
+          HELIX_WINDOWS_PREFLIGHT: '0'
+        run: python workspace.py "${{ steps.request.outputs.job_id }}"
+
+      - name: Execute exact ordinary Helix workspace job
+        if: steps.request.outputs.qualification != 'appcontainer'
         shell: pwsh
         env:
           HELIX_WINDOWS_PREFLIGHT: '1'
