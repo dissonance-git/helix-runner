@@ -1,0 +1,82 @@
+name: windows-confinement-donor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/windows-confinement-donor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  appcontainer-dacl:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - name: Record Windows host
+        shell: pwsh
+        run: |
+          [Environment]::OSVersion.Version
+          (Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber) | Format-List
+          whoami
+          whoami /groups
+
+      - name: Check out pinned MXC donor
+        shell: pwsh
+        run: |
+          git clone --filter=blob:none https://github.com/microsoft/mxc.git mxc
+          Set-Location mxc
+          git checkout e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085
+          if ((git rev-parse HEAD).Trim() -ne 'e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085') { throw 'MXC donor pin mismatch' }
+
+      - name: Build only donor confinement executables
+        shell: pwsh
+        working-directory: mxc/src
+        run: |
+          rustc --version
+          cargo --version
+          cargo build --release --target x86_64-pc-windows-msvc -p wxc -p wxc_host_prep -p wxc_ui_probe
+
+      - name: Prepare reversible AppContainer host prerequisites
+        shell: pwsh
+        working-directory: mxc
+        run: |
+          $Bin = Join-Path $PWD 'src\target\x86_64-pc-windows-msvc\release'
+          & (Join-Path $Bin 'wxc-host-prep.exe') prepare-system-drive
+          if ($LASTEXITCODE -ne 0) { throw "prepare-system-drive failed: $LASTEXITCODE" }
+          & (Join-Path $Bin 'wxc-host-prep.exe') prepare-null-device --no-sacl --json
+          if ($LASTEXITCODE -ne 0) { throw "prepare-null-device failed: $LASTEXITCODE" }
+
+      - name: Prove Tier 3 filesystem and network boundary
+        shell: pwsh
+        working-directory: mxc
+        run: |
+          $Bin = Join-Path $PWD 'src\target\x86_64-pc-windows-msvc\release'
+          $Wxc = Join-Path $Bin 'wxc-exec.exe'
+          $Probe = Join-Path $Bin 'wxc-ui-probe.exe'
+
+          & $Wxc --probe
+          if ($LASTEXITCODE -ne 0) { throw "wxc-exec --probe failed: $LASTEXITCODE" }
+
+          & .\tests\scripts\run_processcontainer_all_tests.ps1 `
+            -SkipBuild `
+            -RequireTier appcontainer-dacl `
+            -WxcDebug $Wxc `
+            -WxcRelease $Wxc `
+            -UiProbeDebug $Probe `
+            -UiProbeRelease $Probe `
+            -Areas Probes,T3Forced,NetworkCapabilityMatrix
+          if ($LASTEXITCODE -ne 0) { throw "MXC Tier-3 witness failed: $LASTEXITCODE" }
+
+      - name: Revert persistent system-drive preparation
+        if: always()
+        shell: pwsh
+        working-directory: mxc
+        run: |
+          $Prep = Join-Path $PWD 'src\target\x86_64-pc-windows-msvc\release\wxc-host-prep.exe'
+          if (Test-Path $Prep) {
+            & $Prep unprepare-system-drive
+            if ($LASTEXITCODE -ne 0) { Write-Warning "unprepare-system-drive failed: $LASTEXITCODE" }
+          }
