@@ -1,0 +1,95 @@
+name: windows-confinement-qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows-confinement-qualification-request.json"
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Exact Helix workspace job UUID
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: helix-windows-confinement-qualification-${{ github.event.inputs.job_id || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - name: Check out runner control surface
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Provision pinned .NET 11 RC1 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '11.0.100-rc.1.26425.128'
+
+      - name: Check out pinned MXC host-prep donor
+        shell: pwsh
+        run: |
+          git clone --filter=blob:none https://github.com/microsoft/mxc.git mxc
+          Set-Location mxc
+          git checkout e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085
+          if ((git rev-parse HEAD).Trim() -ne 'e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085') {
+            throw 'MXC host-prep donor pin mismatch'
+          }
+
+      - name: Build host-prep donor
+        shell: pwsh
+        working-directory: mxc/src
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc -p wxc_host_prep
+
+      - name: Prepare disposable Windows host
+        id: prep
+        shell: pwsh
+        working-directory: mxc
+        run: |
+          $Prep = Join-Path $PWD 'src\target\x86_64-pc-windows-msvc\release\wxc-host-prep.exe'
+          & $Prep prepare-system-drive
+          if ($LASTEXITCODE -ne 0) { throw "prepare-system-drive failed: $LASTEXITCODE" }
+          & $Prep prepare-null-device --no-sacl --json
+          if ($LASTEXITCODE -ne 0) { throw "prepare-null-device failed: $LASTEXITCODE" }
+
+      - name: Resolve exact workspace job
+        id: request
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.job_id }}")) {
+            $JobId = "${{ inputs.job_id }}"
+          } else {
+            $Request = Get-Content -LiteralPath windows-confinement-qualification-request.json -Raw -Encoding UTF8 | ConvertFrom-Json
+            $JobId = [string]$Request.job_id
+          }
+          if ($JobId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+            throw "Invalid workspace job id: $JobId"
+          }
+          "job_id=$JobId" >> $env:GITHUB_OUTPUT
+
+      - name: Execute exact Helix qualification job
+        shell: pwsh
+        env:
+          HELIX_WINDOWS_PREFLIGHT: '1'
+        run: python workspace.py "${{ steps.request.outputs.job_id }}"
+
+      - name: Revert persistent system-drive preparation
+        if: always() && steps.prep.outcome == 'success'
+        shell: pwsh
+        working-directory: mxc
+        run: |
+          $Prep = Join-Path $PWD 'src\target\x86_64-pc-windows-msvc\release\wxc-host-prep.exe'
+          & $Prep unprepare-system-drive
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "unprepare-system-drive failed: $LASTEXITCODE"
+          }
