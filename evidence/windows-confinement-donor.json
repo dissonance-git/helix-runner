@@ -2,8 +2,8 @@
   "schema": "helix-windows-confinement-donor-v1",
   "donor": "microsoft/mxc",
   "donor_sha": "e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085",
-  "runner_sha": "48c7a62abfb33b98a3d2f2189c68d097331ac517",
-  "run_id": "36295118783",
+  "runner_sha": "c28569b3b6ae0c2f57f2026220dadfd6872846b0",
+  "run_id": "36295582663",
   "windows": {
     "caption": "Microsoft Windows Server 2025 Datacenter",
     "version": "10.0.26100",
@@ -13,7 +13,7 @@
   "witness_outcome": "failure",
   "probe": "{\r\n  \"tier\": \"appcontainer-dacl\",\r\n  \"needsDaclAugmentation\": true,\r\n  \"warnings\": [\r\n    \"BaseContainer tier not selected, and AppContainer + BFS is not compiled into this binary; falling back to AppContainer + DACL\"\r\n  ],\r\n  \"probes\": {\r\n    \"baseContainerApiPresent\": false,\r\n    \"nativeCaptureAvailable\": false,\r\n    \"guardedCaptureAvailable\": false,\r\n    \"bfscfgPresent\": false,\r\n    \"bfsCompiledIn\": false,\r\n    \"baseContainerSupportsDenyPaths\": false,\r\n    \"baseContainerSupportsEnumeratePaths\": false,\r\n    \"baseContainerSupportsIngressHostLoopbackAllow\": false,\r\n    \"isolationSessionAvailable\": false,\r\n    \"hyperlightAvailable\": false,\r\n    \"uiCapabilities\": {\r\n      \"canBlockClipboardRead\": true,\r\n      \"canBlockClipboardWrite\": true,\r\n      \"canBlockInputInjection\": true,\r\n      \"canBlockInputMethodChanges\": true,\r\n      \"canBlockExternalUiObjects\": true,\r\n      \"canBlockGlobalUiNamespace\": true,\r\n      \"canBlockDesktopSwitching\": true,\r\n      \"canBlockLogoffOrShutdown\": true,\r\n      \"canBlockSystemParameterChanges\": true,\r\n      \"canBlockDisplaySettingsChanges\": true\r\n    }\r\n  }\r\n}\r\n",
   "results": {
-    "timestamp": "2026-09-27T04:52:15.5932812+00:00",
+    "timestamp": "2026-09-27T05:02:28.6385322+00:00",
     "host": "runnervm99s1a",
     "os": "Microsoft Windows Server 2025 Datacenter",
     "osBuild": "26100",
