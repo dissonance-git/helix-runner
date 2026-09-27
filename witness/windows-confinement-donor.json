@@ -1,0 +1,1 @@
+{"schema":"helix-windows-confinement-donor-v1","donor":"microsoft/mxc","donor_commit":"e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085","runner_commit":"c28569b3b6ae0c2f57f2026220dadfd6872846b0","run_id":"36295582663","windows_build":26100,"expected_tier":"appcontainer-dacl","build":"success","host_prep":"success","boundary_probe":"failure","cleanup":"success","passed":false}
