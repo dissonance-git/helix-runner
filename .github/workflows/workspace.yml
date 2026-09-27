@@ -41,6 +41,11 @@ jobs:
           dotnet --version
           dotnet --list-sdks
 
+      - name: Provision pinned pytest
+        run: |
+          python3 -m pip install --disable-pip-version-check --no-input pytest==8.4.2
+          python3 -m pytest --version
+
       - name: Execute exact Helix workspace job
         env:
           HELIX_JOB_ID: ${{ github.event.inputs.job_id || '' }}
