@@ -182,6 +182,14 @@ def main() -> int:
             root = Path(td)
             helix, mapping = _materialize(source, root)
             env = os.environ.copy()
+            if os.name == "nt":
+                # The canonical worker intentionally admits only a small
+                # non-secret environment. Map Windows home/temp coordinates
+                # into the portable names it already preserves so .NET/NuGet
+                # can resolve caches and scratch paths without inheriting the
+                # full parent environment.
+                env["HOME"] = os.environ.get("USERPROFILE", str(root))
+                env["TMPDIR"] = os.environ.get("TEMP", str(root))
             env.update(
                 {
                     "HELIX_WORKSPACE_URL": PROJECT_URL,
