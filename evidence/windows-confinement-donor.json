@@ -2,8 +2,8 @@
   "schema": "helix-windows-confinement-donor-v1",
   "donor": "microsoft/mxc",
   "donor_sha": "e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085",
-  "runner_sha": "c28569b3b6ae0c2f57f2026220dadfd6872846b0",
-  "run_id": "36295582663",
+  "runner_sha": "3ae79f97100f892c046f6dbf67b6af7c08d98dd0",
+  "run_id": "36295767423",
   "windows": {
     "caption": "Microsoft Windows Server 2025 Datacenter",
     "version": "10.0.26100",
@@ -13,23 +13,359 @@
   "witness_outcome": "failure",
   "probe": "{\r\n  \"tier\": \"appcontainer-dacl\",\r\n  \"needsDaclAugmentation\": true,\r\n  \"warnings\": [\r\n    \"BaseContainer tier not selected, and AppContainer + BFS is not compiled into this binary; falling back to AppContainer + DACL\"\r\n  ],\r\n  \"probes\": {\r\n    \"baseContainerApiPresent\": false,\r\n    \"nativeCaptureAvailable\": false,\r\n    \"guardedCaptureAvailable\": false,\r\n    \"bfscfgPresent\": false,\r\n    \"bfsCompiledIn\": false,\r\n    \"baseContainerSupportsDenyPaths\": false,\r\n    \"baseContainerSupportsEnumeratePaths\": false,\r\n    \"baseContainerSupportsIngressHostLoopbackAllow\": false,\r\n    \"isolationSessionAvailable\": false,\r\n    \"hyperlightAvailable\": false,\r\n    \"uiCapabilities\": {\r\n      \"canBlockClipboardRead\": true,\r\n      \"canBlockClipboardWrite\": true,\r\n      \"canBlockInputInjection\": true,\r\n      \"canBlockInputMethodChanges\": true,\r\n      \"canBlockExternalUiObjects\": true,\r\n      \"canBlockGlobalUiNamespace\": true,\r\n      \"canBlockDesktopSwitching\": true,\r\n      \"canBlockLogoffOrShutdown\": true,\r\n      \"canBlockSystemParameterChanges\": true,\r\n      \"canBlockDisplaySettingsChanges\": true\r\n    }\r\n  }\r\n}\r\n",
   "results": {
-    "timestamp": "2026-09-27T05:02:28.6385322+00:00",
+    "timestamp": "2026-09-27T05:04:05.8993371+00:00",
     "host": "runnervm99s1a",
     "os": "Microsoft Windows Server 2025 Datacenter",
     "osBuild": "26100",
-    "total": 1,
-    "passed": 0,
-    "failed": 1,
+    "total": 49,
+    "passed": 40,
+    "failed": 9,
     "skipped": 0,
     "warnings": 0,
     "fatal": false,
     "results": [
       {
-        "Phase": "ABORT",
-        "Name": "harness aborted",
+        "Phase": "P0",
+        "Name": "tier prerequisite: host selects appcontainer-dacl",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expectedTier=appcontainer-dacl"
+      },
+      {
+        "Phase": "P1",
+        "Name": "expected tier is a recognized value",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expectedTier=appcontainer-dacl"
+      },
+      {
+        "Phase": "P1",
+        "Name": "empty policy probe is repeatable -> tier=appcontainer-dacl",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "tier=appcontainer-dacl; consistency check, not tier validation -- use -RequireTier for that"
+      },
+      {
+        "Phase": "P1",
+        "Name": "empty policy probe -> needsDaclAugmentation=True",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "needsDaclAugmentation=True"
+      },
+      {
+        "Phase": "P1",
+        "Name": "probe reports baseContainerSupportsEnumeratePaths",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "value=False; supportsEnumeratePaths=False"
+      },
+      {
+        "Phase": "P1",
+        "Name": "rw-paths probe -> tier=appcontainer-dacl",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "tier=appcontainer-dacl"
+      },
+      {
+        "Phase": "P1",
+        "Name": "rw-paths probe -> needsDaclAugmentation=True",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "needsDaclAugmentation=True"
+      },
+      {
+        "Phase": "P1",
+        "Name": "denied probe -> tier=appcontainer-dacl",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "tier=appcontainer-dacl"
+      },
+      {
+        "Phase": "P1",
+        "Name": "denied probe -> needsDaclAugmentation=True",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "needsDaclAugmentation=True"
+      },
+      {
+        "Phase": "P1",
+        "Name": "allowDaclMutation=false + rw-paths probe -> error (DACL augmentation refused)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "tierMissing=True; error=DACL fallback required but fallback.allowDaclMutation is false"
+      },
+      {
+        "Phase": "P0",
+        "Name": "tier prerequisite: host selects appcontainer-dacl",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expectedTier=appcontainer-dacl"
+      },
+      {
+        "Phase": "P4",
+        "Name": "child exit=0",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "exit=0"
+      },
+      {
+        "Phase": "P4",
+        "Name": "selected isolation tier: appcontainer-dacl",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=appcontainer-dacl"
+      },
+      {
+        "Phase": "P4",
+        "Name": "UI restrictions applied telemetry",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "Win32k mitigation NOT applied (ui.disable=false)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "this config has ui.disable=false"
+      },
+      {
+        "Phase": "P4",
+        "Name": "rw ACL restored after run",
         "Pass": false,
         "Status": "fail",
-        "Detail": "plm.exe not found beside D:\\a\\helix-runner\\helix-runner\\mxc\\src\\target\\x86_64-pc-windows-msvc\\release\\wxc-exec.exe. Build it with `cargo build -p plm -p wxc_winhttp_proxy_shim` (add --release for the release lane) or drop -SkipBuild."
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "ro ACL restored after run",
+        "Pass": false,
+        "Status": "fail",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "denied ACL restored after run",
+        "Pass": false,
+        "Status": "fail",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "no orphan state files",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "files=0"
+      },
+      {
+        "Phase": "P4",
+        "Name": "child wrote and read inside rw path",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "ui.disable=true emits Win32k mitigation applied",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "child exit=0 (expected to fail; cmd.exe needs Win32k)"
+      },
+      {
+        "Phase": "P4",
+        "Name": "ui.disable=true emits selected isolation tier: appcontainer-dacl",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=appcontainer-dacl"
+      },
+      {
+        "Phase": "P4",
+        "Name": "ui.disable=true rw ACL still cleaned up",
+        "Pass": false,
+        "Status": "fail",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "ui.disable=true no orphan state files",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "sandbox blocks ping: workload actually started",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "marker seen=True"
+      },
+      {
+        "Phase": "P4",
+        "Name": "sandbox blocks ping (child exit != 0)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "ran=True; exit=1"
+      },
+      {
+        "Phase": "P4",
+        "Name": "sandbox blocks ping (failed fast, < 5s)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "ran=True; elapsed=0.08s"
+      },
+      {
+        "Phase": "P4",
+        "Name": "sandbox blocks ping (failure looks socket-related)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "best-effort string match"
+      },
+      {
+        "Phase": "P4",
+        "Name": "sandbox blocks ping: selected isolation tier: appcontainer-dacl",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=appcontainer-dacl"
+      },
+      {
+        "Phase": "P4",
+        "Name": "sandbox blocks ping: rw ACL still cleaned up",
+        "Pass": false,
+        "Status": "fail",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "sandbox blocks ping: no orphan state files",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix RW_WRITE (rw grant must allow child to create files)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=allowed; got=allowed; full=CONTROL_READ=denied CONTROL_WRITE=denied DENIED_READ=denied DENIED_WRITE=denied RO_READ=allowed RO_WRITE=denied RW_READ=allowed RW_WRITE=allowed"
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix RW_READ (rw grant must allow child to read its own file)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=allowed; got=allowed; full=CONTROL_READ=denied CONTROL_WRITE=denied DENIED_READ=denied DENIED_WRITE=denied RO_READ=allowed RO_WRITE=denied RW_READ=allowed RW_WRITE=allowed"
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix RO_READ (ro grant must allow reads (tests ACE inheritance to existing children))",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=allowed; got=allowed; full=CONTROL_READ=denied CONTROL_WRITE=denied DENIED_READ=denied DENIED_WRITE=denied RO_READ=allowed RO_WRITE=denied RW_READ=allowed RW_WRITE=allowed"
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix RO_WRITE (ro grant must NOT allow writes)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=denied; got=denied; full=CONTROL_READ=denied CONTROL_WRITE=denied DENIED_READ=denied DENIED_WRITE=denied RO_READ=allowed RO_WRITE=denied RW_READ=allowed RW_WRITE=allowed"
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix DENIED_READ (denied path must block reads)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=denied; got=denied; full=CONTROL_READ=denied CONTROL_WRITE=denied DENIED_READ=denied DENIED_WRITE=denied RO_READ=allowed RO_WRITE=denied RW_READ=allowed RW_WRITE=allowed"
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix DENIED_WRITE (denied path must block writes)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=denied; got=denied; full=CONTROL_READ=denied CONTROL_WRITE=denied DENIED_READ=denied DENIED_WRITE=denied RO_READ=allowed RO_WRITE=denied RW_READ=allowed RW_WRITE=allowed"
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix CONTROL_READ (control path (no policy) must be sandboxed)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=denied; got=denied; full=CONTROL_READ=denied CONTROL_WRITE=denied DENIED_READ=denied DENIED_WRITE=denied RO_READ=allowed RO_WRITE=denied RW_READ=allowed RW_WRITE=allowed"
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix CONTROL_WRITE (control path (no policy) must be sandboxed)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expected=denied; got=denied; full=CONTROL_READ=denied CONTROL_WRITE=denied DENIED_READ=denied DENIED_WRITE=denied RO_READ=allowed RO_WRITE=denied RW_READ=allowed RW_WRITE=allowed"
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix: rw ACL restored",
+        "Pass": false,
+        "Status": "fail",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix: ro ACL restored",
+        "Pass": false,
+        "Status": "fail",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix: denied ACL restored",
+        "Pass": false,
+        "Status": "fail",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix: control ACL untouched",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": ""
+      },
+      {
+        "Phase": "P4",
+        "Name": "matrix: no orphan state files",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": ""
+      },
+      {
+        "Phase": "P0",
+        "Name": "tier prerequisite: host selects appcontainer-dacl",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "expectedTier=appcontainer-dacl"
+      },
+      {
+        "Phase": "P8a",
+        "Name": "egress=deny ingress=deny -> internet denied",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "verdict=BLOCKED; exit=0"
+      },
+      {
+        "Phase": "P8a",
+        "Name": "egress=allow ingress=deny -> internet REACHED (internetClient granted)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "verdict=REACHED; exit=0"
+      },
+      {
+        "Phase": "P8a",
+        "Name": "egress=deny ingress=allow -> REJECTED on non-PSEC tier (bidirectional capability)",
+        "Pass": false,
+        "Status": "fail",
+        "Detail": "verdict=NORUN; exit=-1; timedOut=False; tier=appcontainer-dacl"
+      },
+      {
+        "Phase": "P8a",
+        "Name": "egress=allow ingress=allow -> internet REACHED (both capabilities)",
+        "Pass": true,
+        "Status": "pass",
+        "Detail": "verdict=REACHED; exit=0"
       }
     ]
   }
