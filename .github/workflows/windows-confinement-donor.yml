@@ -8,13 +8,18 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   appcontainer-dacl:
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
+      - name: Check out runner evidence surface
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+
       - name: Record Windows host
         shell: pwsh
         run: |
@@ -50,14 +55,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "prepare-null-device failed: $LASTEXITCODE" }
 
       - name: Prove Tier 3 filesystem and network boundary
+        id: witness
+        continue-on-error: true
         shell: pwsh
         working-directory: mxc
         run: |
           $Bin = Join-Path $PWD 'src\target\x86_64-pc-windows-msvc\release'
           $Wxc = Join-Path $Bin 'wxc-exec.exe'
           $Probe = Join-Path $Bin 'wxc-ui-probe.exe'
+          $ProbeJson = Join-Path $env:RUNNER_TEMP 'mxc-probe.txt'
+          $ResultsJson = Join-Path $env:RUNNER_TEMP 'mxc-tier3-results.json'
 
-          & $Wxc --probe
+          & $Wxc --probe 2>&1 | Tee-Object -FilePath $ProbeJson
           if ($LASTEXITCODE -ne 0) { throw "wxc-exec --probe failed: $LASTEXITCODE" }
 
           & .\tests\scripts\run_processcontainer_all_tests.ps1 `
@@ -67,6 +76,7 @@ jobs:
             -WxcRelease $Wxc `
             -UiProbeDebug $Probe `
             -UiProbeRelease $Probe `
+            -ResultsJson $ResultsJson `
             -Areas Probes,T3Forced,NetworkCapabilityMatrix
           if ($LASTEXITCODE -ne 0) { throw "MXC Tier-3 witness failed: $LASTEXITCODE" }
 
@@ -79,4 +89,49 @@ jobs:
           if (Test-Path $Prep) {
             & $Prep unprepare-system-drive
             if ($LASTEXITCODE -ne 0) { Write-Warning "unprepare-system-drive failed: $LASTEXITCODE" }
+          }
+
+      - name: Publish exact donor evidence
+        if: always()
+        shell: pwsh
+        run: |
+          git pull --ff-only origin main
+
+          $Os = Get-CimInstance Win32_OperatingSystem
+          $ProbePath = Join-Path $env:RUNNER_TEMP 'mxc-probe.txt'
+          $ResultsPath = Join-Path $env:RUNNER_TEMP 'mxc-tier3-results.json'
+          $ProbeText = if (Test-Path $ProbePath) { Get-Content -LiteralPath $ProbePath -Raw } else { $null }
+          $Results = if (Test-Path $ResultsPath) {
+            try { Get-Content -LiteralPath $ResultsPath -Raw | ConvertFrom-Json }
+            catch { [ordered]@{ parse_error = $_.Exception.Message; raw = (Get-Content -LiteralPath $ResultsPath -Raw) } }
+          } else { $null }
+
+          $Evidence = [ordered]@{
+            schema = 'helix-windows-confinement-donor-v1'
+            donor = 'microsoft/mxc'
+            donor_sha = 'e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085'
+            runner_sha = $env:GITHUB_SHA
+            run_id = $env:GITHUB_RUN_ID
+            windows = [ordered]@{
+              caption = $Os.Caption
+              version = $Os.Version
+              build = $Os.BuildNumber
+            }
+            expected_tier = 'appcontainer-dacl'
+            witness_outcome = '${{ steps.witness.outcome }}'
+            probe = $ProbeText
+            results = $Results
+          }
+
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          $Evidence | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath evidence/windows-confinement-donor.json -Encoding UTF8
+
+          git config user.name 'helix-runner'
+          git config user.email 'helix-runner@users.noreply.github.com'
+          git add evidence/windows-confinement-donor.json
+          git commit -m "record Windows confinement donor evidence"
+          git push origin HEAD:main
+
+          if ('${{ steps.witness.outcome }}' -ne 'success') {
+            throw 'Windows confinement donor witness did not pass.'
           }
