@@ -44,7 +44,7 @@ jobs:
         run: |
           rustc --version
           cargo --version
-          cargo build --release --target x86_64-pc-windows-msvc -p wxc -p wxc_host_prep -p wxc_ui_probe
+          cargo build --release --target x86_64-pc-windows-msvc -p wxc -p wxc_host_prep -p wxc_ui_probe -p plm -p wxc_winhttp_proxy_shim
 
       - name: Prepare reversible AppContainer host prerequisites
         id: prep
