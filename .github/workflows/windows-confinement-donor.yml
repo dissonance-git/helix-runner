@@ -58,7 +58,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "prepare-null-device failed: $LASTEXITCODE" }
 
       - name: Prove Tier 3 filesystem and network boundary
-        id: prove
         id: witness
         continue-on-error: true
         shell: pwsh
@@ -148,7 +147,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           PREP_OUTCOME: ${{ steps.prep.outcome }}
-          PROVE_OUTCOME: ${{ steps.prove.outcome }}
+          PROVE_OUTCOME: ${{ steps.witness.outcome }}
           CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
         run: |
           $Passed = ($env:BUILD_OUTCOME -eq 'success' -and $env:PREP_OUTCOME -eq 'success' -and $env:PROVE_OUTCOME -eq 'success')
