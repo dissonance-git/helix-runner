@@ -1,0 +1,45 @@
+name: windows-confinement-probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/windows-confinement-probe.yml"
+      - "probes/windows-appcontainer/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Check out probe
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Provision pinned .NET 11 RC1 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '11.0.100-rc.1.26425.128'
+
+      - name: Record Windows substrate
+        shell: pwsh
+        run: |
+          [Environment]::OSVersion.VersionString
+          dotnet --version
+
+      - name: Publish disposable AppContainer witness
+        shell: pwsh
+        run: dotnet publish probes/windows-appcontainer/WindowsAppContainerProbe.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$env:RUNNER_TEMP\helix-appcontainer-probe"
+
+      - name: Prove AppContainer + DACL filesystem and network denial
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP\helix-appcontainer-probe\WindowsAppContainerProbe.exe"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows AppContainer confinement witness failed with exit code $LASTEXITCODE"
+          }
