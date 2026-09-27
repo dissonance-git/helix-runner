@@ -1,0 +1,54 @@
+name: windows-appcontainer-probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "probes/AppContainerProbe/**"
+      - ".github/workflows/windows-appcontainer-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - name: Check out probe
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Provision pinned .NET 11 RC1 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '11.0.100-rc.1.26425.128'
+
+      - name: Record Windows and SDK identity
+        shell: pwsh
+        run: |
+          cmd /c ver
+          dotnet --version
+          dotnet --info
+
+      - name: Build disposable AppContainer probe
+        shell: pwsh
+        run: |
+          $Out = Join-Path $env:RUNNER_TEMP 'helix-appcontainer-probe'
+          dotnet publish probes/AppContainerProbe/AppContainerProbe.csproj -c Release -r win-x64 --self-contained true -o $Out --nologo
+          if ($LASTEXITCODE -ne 0) { throw "probe publish failed: $LASTEXITCODE" }
+          "probe_out=$Out" >> $env:GITHUB_ENV
+
+      - name: Prove filesystem and network confinement
+        shell: pwsh
+        run: |
+          $Exe = Join-Path $env:probe_out 'AppContainerProbe.exe'
+          $Output = & $Exe 2>&1
+          $Exit = $LASTEXITCODE
+          $Output | ForEach-Object { Write-Host $_ }
+          if ($Exit -ne 0) { throw "AppContainer probe failed: $Exit" }
+          $Text = $Output | Out-String
+          if ($Text -notmatch 'HELIX_APPCONTAINER_PROBE_OK') {
+            throw 'AppContainer probe did not emit the success witness'
+          }
