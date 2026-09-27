@@ -38,6 +38,7 @@ jobs:
           if ((git rev-parse HEAD).Trim() -ne 'e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085') { throw 'MXC donor pin mismatch' }
 
       - name: Build only donor confinement executables
+        id: build
         shell: pwsh
         working-directory: mxc/src
         run: |
@@ -46,6 +47,7 @@ jobs:
           cargo build --release --target x86_64-pc-windows-msvc -p wxc -p wxc_host_prep -p wxc_ui_probe
 
       - name: Prepare reversible AppContainer host prerequisites
+        id: prep
         shell: pwsh
         working-directory: mxc
         run: |
@@ -56,6 +58,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "prepare-null-device failed: $LASTEXITCODE" }
 
       - name: Prove Tier 3 filesystem and network boundary
+        id: prove
         id: witness
         continue-on-error: true
         shell: pwsh
@@ -82,6 +85,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "MXC Tier-3 witness failed: $LASTEXITCODE" }
 
       - name: Revert persistent system-drive preparation
+        id: cleanup
         if: always()
         shell: pwsh
         working-directory: mxc
@@ -136,3 +140,46 @@ jobs:
           if ('${{ steps.witness.outcome }}' -ne 'success') {
             throw 'Windows confinement donor witness did not pass.'
           }
+
+      - name: Publish confinement witness receipt
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          PREP_OUTCOME: ${{ steps.prep.outcome }}
+          PROVE_OUTCOME: ${{ steps.prove.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
+        run: |
+          $Passed = ($env:BUILD_OUTCOME -eq 'success' -and $env:PREP_OUTCOME -eq 'success' -and $env:PROVE_OUTCOME -eq 'success')
+          $Receipt = [ordered]@{
+            schema = 'helix-windows-confinement-donor-v1'
+            donor = 'microsoft/mxc'
+            donor_commit = 'e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085'
+            runner_commit = '${{ github.sha }}'
+            run_id = '${{ github.run_id }}'
+            windows_build = [Environment]::OSVersion.Version.Build
+            expected_tier = 'appcontainer-dacl'
+            build = $env:BUILD_OUTCOME
+            host_prep = $env:PREP_OUTCOME
+            boundary_probe = $env:PROVE_OUTCOME
+            cleanup = $env:CLEANUP_OUTCOME
+            passed = $Passed
+          } | ConvertTo-Json -Compress
+          $Bytes = [Text.Encoding]::UTF8.GetBytes($Receipt + [Environment]::NewLine)
+          $Content = [Convert]::ToBase64String($Bytes)
+          $Path = 'witness/windows-confinement-donor.json'
+          $ExistingSha = $null
+          try {
+            $Existing = gh api "repos/$env:GITHUB_REPOSITORY/contents/$Path?ref=main" | ConvertFrom-Json
+            $ExistingSha = [string]$Existing.sha
+          } catch {}
+          $Args = @(
+            '--method','PUT',
+            "repos/$env:GITHUB_REPOSITORY/contents/$Path",
+            '-f',"message=record Windows confinement donor witness",
+            '-f',"content=$Content",
+            '-f','branch=main'
+          )
+          if ($ExistingSha) { $Args += @('-f',"sha=$ExistingSha") }
+          gh api @Args
