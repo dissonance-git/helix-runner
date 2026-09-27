@@ -1,4 +1,5 @@
 name: windows-confinement-donor
+# Second commit intentionally triggers the newly-installed workflow.
 
 on:
   push:
