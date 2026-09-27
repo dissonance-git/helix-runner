@@ -148,6 +148,7 @@ def _materialize(source: dict, root: Path) -> tuple[Path, dict[str, str]]:
         raise RuntimeError("workspace source has no helix repository")
 
     mapping: dict[str, str] = {}
+    heads: dict[str, str] = {}
     for key, meta in repositories.items():
         repo = (extracted / str(key)).resolve()
         if not repo.is_dir():
@@ -164,8 +165,12 @@ def _materialize(source: dict, root: Path) -> tuple[Path, dict[str, str]]:
         )
         remote = str(meta.get("remote") or "").strip() or "https://invalid.example/helix-workspace"
         _git(repo, "remote", "add", "origin", remote)
+        head = str(meta.get("head") or "").strip().lower()
+        if len(head) != 40 or any(ch not in "0123456789abcdef" for ch in head):
+            raise RuntimeError(f"workspace source repository has invalid canonical head: {key}")
         mapping[str(key)] = str(repo)
-    return Path(mapping["helix"]), mapping
+        heads[str(key)] = head
+    return Path(mapping["helix"]), mapping, heads
 
 
 def main() -> int:
@@ -180,7 +185,7 @@ def main() -> int:
         source = _source(job_id)
         with tempfile.TemporaryDirectory(prefix="helix-github-workspace-") as td:
             root = Path(td)
-            helix, mapping = _materialize(source, root)
+            helix, mapping, source_heads = _materialize(source, root)
             if os.name == "nt" and os.environ.get("HELIX_WINDOWS_PREFLIGHT") == "1":
                 # Windows confinement and .NET substrate qualification needs a
                 # real Windows execution witness. Run the canonical Helix gates
@@ -218,6 +223,7 @@ def main() -> int:
                     "HELIX_WORKSPACE_WORKER_ID": worker_id,
                     "HELIX_WORKSPACE_TOKEN": worker_token,
                     "HELIX_WORKSPACE_REPOS": json.dumps(mapping, separators=(",", ":")),
+                    "HELIX_WORKSPACE_SOURCE_HEADS": json.dumps(source_heads, separators=(",", ":")),
                     "HELIX_WORKSPACE_REPOSITORY_OWNERSHIP": "operator",
                     "HELIX_WORKSPACE_API_ROOT": str(helix),
                     "HELIX_WORKSPACE_ROOT": str(root),
