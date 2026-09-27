@@ -1,0 +1,63 @@
+name: workspace-windows
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows-workspace-request.json"
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Exact Helix workspace job UUID
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: helix-workspace-windows-${{ github.event.inputs.job_id || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Check out runner control surface
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Provision pinned .NET 11 RC1 SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '11.0.100-rc.1.26425.128'
+
+      - name: Record Windows and SDK identity
+        shell: pwsh
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          python --version
+          dotnet --version
+          dotnet --list-sdks
+
+      - name: Resolve exact workspace job
+        id: request
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.job_id }}")) {
+            $JobId = "${{ inputs.job_id }}"
+          } else {
+            $Request = Get-Content -LiteralPath windows-workspace-request.json -Raw -Encoding UTF8 | ConvertFrom-Json
+            $JobId = [string]$Request.job_id
+          }
+          if ($JobId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+            throw "Invalid workspace job id: $JobId"
+          }
+          "job_id=$JobId" >> $env:GITHUB_OUTPUT
+
+      - name: Execute exact Helix workspace job
+        shell: pwsh
+        run: python workspace.py "${{ steps.request.outputs.job_id }}"
