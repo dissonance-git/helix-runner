@@ -60,4 +60,6 @@ jobs:
 
       - name: Execute exact Helix workspace job
         shell: pwsh
+        env:
+          HELIX_WINDOWS_PREFLIGHT: '1'
         run: python workspace.py "${{ steps.request.outputs.job_id }}"
