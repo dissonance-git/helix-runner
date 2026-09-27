@@ -47,19 +47,62 @@ jobs:
         id: request
         shell: pwsh
         run: |
+          $Qualification = ''
           if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.job_id }}")) {
             $JobId = "${{ inputs.job_id }}"
           } else {
             $Request = Get-Content -LiteralPath windows-workspace-request.json -Raw -Encoding UTF8 | ConvertFrom-Json
             $JobId = [string]$Request.job_id
+            $Qualification = [string]$Request.qualification
           }
           if ($JobId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
             throw "Invalid workspace job id: $JobId"
           }
           "job_id=$JobId" >> $env:GITHUB_OUTPUT
+          "qualification=$Qualification" >> $env:GITHUB_OUTPUT
+
+      - name: Check out pinned MXC host-prep donor
+        if: steps.request.outputs.qualification == 'appcontainer'
+        shell: pwsh
+        run: |
+          git clone --filter=blob:none https://github.com/microsoft/mxc.git mxc
+          Set-Location mxc
+          git checkout e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085
+          if ((git rev-parse HEAD).Trim() -ne 'e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085') {
+            throw 'MXC host-prep donor pin mismatch'
+          }
+
+      - name: Build AppContainer host-prep donor
+        if: steps.request.outputs.qualification == 'appcontainer'
+        shell: pwsh
+        working-directory: mxc/src
+        run: cargo build --release --target x86_64-pc-windows-msvc -p wxc_host_prep
+
+      - name: Prepare disposable AppContainer host
+        id: qualification_prep
+        if: steps.request.outputs.qualification == 'appcontainer'
+        shell: pwsh
+        working-directory: mxc
+        run: |
+          $Prep = Join-Path $PWD 'src\target\x86_64-pc-windows-msvc\release\wxc-host-prep.exe'
+          & $Prep prepare-system-drive
+          if ($LASTEXITCODE -ne 0) { throw "prepare-system-drive failed: $LASTEXITCODE" }
+          & $Prep prepare-null-device --no-sacl --json
+          if ($LASTEXITCODE -ne 0) { throw "prepare-null-device failed: $LASTEXITCODE" }
 
       - name: Execute exact Helix workspace job
         shell: pwsh
         env:
           HELIX_WINDOWS_PREFLIGHT: '1'
         run: python workspace.py "${{ steps.request.outputs.job_id }}"
+
+      - name: Revert persistent qualification preparation
+        if: always() && steps.qualification_prep.outcome == 'success'
+        shell: pwsh
+        working-directory: mxc
+        run: |
+          $Prep = Join-Path $PWD 'src\target\x86_64-pc-windows-msvc\release\wxc-host-prep.exe'
+          & $Prep unprepare-system-drive
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "unprepare-system-drive failed: $LASTEXITCODE"
+          }
