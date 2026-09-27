@@ -181,6 +181,28 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="helix-github-workspace-") as td:
             root = Path(td)
             helix, mapping = _materialize(source, root)
+            if os.name == "nt" and os.environ.get("HELIX_WINDOWS_PREFLIGHT") == "1":
+                # Windows confinement and .NET substrate qualification needs a
+                # real Windows execution witness. Run the canonical Helix gates
+                # over the exact staged source before the generic worker narrows
+                # its child environment.
+                subprocess.run(
+                    ["dotnet", "build", "Helix.slnx", "--nologo"],
+                    cwd=helix,
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        "dotnet",
+                        "run",
+                        "--project",
+                        "service/Helix.Service.csproj",
+                        "--",
+                        "self-test",
+                    ],
+                    cwd=helix,
+                    check=True,
+                )
             env = os.environ.copy()
             if os.name == "nt":
                 # The canonical worker intentionally admits only a small
