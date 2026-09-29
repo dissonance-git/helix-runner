@@ -8,14 +8,15 @@ This repository is **not** a source mirror, project workspace, validation author
 
 This repository is the public control surface for disposable **GitHub-hosted** execution. It does not use a local runner, self-hosted runner, or GitLab runner.
 
-For Omniphony Windows builds, the `windows-build.yml` workflow runs on GitHub-hosted `windows-2025`, reads only an exact canonical GitLab commit SHA from the public request, and fetches that private commit at runtime with a repository read-only GitLab credential stored in GitHub Actions secrets. Private source is never committed to this repository and is deleted from the hosted runner after the job.
+For Omniphony Windows builds, the `windows-build.yml` workflow runs on GitHub-hosted `windows-2025`, reads only an exact canonical GitLab commit SHA from the public request, authenticates to the private compile-source relay with GitHub OIDC, reconstructs only the bounded source snapshot required for compilation, verifies every file hash, and deletes the staged snapshot after the job. No GitLab credential is stored in this public repository or required as a GitHub Actions secret.
 
 ```text
 canonical private GitLab commit SHA
-→ GitHub Actions read-only GitLab credential
+→ bounded private compile snapshot
+→ GitHub OIDC
 → GitHub-hosted windows-2025
-→ ci/windows-product.ps1
-→ attested short-lived build artifact
+→ managed + native Windows compile
+→ short-lived compile receipt
 ```
 
 ## Windows runner target
@@ -29,7 +30,7 @@ exact admitted private source
 → bounded artifact/evidence
 ```
 
-For Omniphony, the verifier is `ci/windows-product.ps1` running on GitHub-hosted Windows. The old Supabase source-broker protocol is retired and is no longer used by `windows-build.yml`.
+For Omniphony, `windows-build.yml` is the default hosted compile gate. It compiles the managed Setup project and the native Windows APO/helper CMake tree from the exact bounded snapshot. Full product packaging remains project-owned; the old `helix-build` / `helix-workspace` broker protocol is retired and is not used.
 
 The public repository stores no GitLab credentials, project source, Supabase service-role key, or persistent worker token. Any replacement handoff must preserve those properties.
 
