@@ -44,59 +44,81 @@ jobs:
             }
             $SourceSha = [string]$Request.source_sha
           }
+
           if ($SourceSha -notmatch '^[0-9a-fA-F]{40}$') {
             throw "Invalid Omniphony source SHA: $SourceSha"
           }
+
           "source_sha=$($SourceSha.ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
-      - name: Claim OIDC-scoped private compile snapshot
+      - name: Claim bounded private compile snapshot
         id: source
         shell: pwsh
         env:
           SOURCE_SHA: "${{ steps.request.outputs.source_sha }}"
-          SOURCE_RELAY_URL: https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/omniphony-github-source
         run: |
-          $Audience = [uri]::EscapeDataString('omniphony-supabase-compile')
-          $OidcResponse = Invoke-RestMethod -Uri ($env:ACTIONS_ID_TOKEN_REQUEST_URL + '&audience=' + $Audience) -Headers @{ Authorization = 'Bearer ' + $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN }
-          $Oidc = [string]$OidcResponse.value
-          if ([string]::IsNullOrWhiteSpace($Oidc)) { throw 'GitHub OIDC token unavailable' }
+          $Audience = 'helix-runner-source-relay'
+          $OidcUrl = "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=$Audience"
+          $Oidc = Invoke-RestMethod -Method Get -Uri $OidcUrl -Headers @{
+            Authorization = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          }
+          if ([string]::IsNullOrWhiteSpace([string]$Oidc.value)) {
+            throw 'GitHub OIDC token request returned no token.'
+          }
 
+          $Relay = 'https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/github-compile-source'
           $Body = @{
-            action = 'claim'
+            action = 'read'
             source_sha = $env:SOURCE_SHA
           } | ConvertTo-Json -Compress
-          $Response = Invoke-RestMethod -Method Post -Uri $env:SOURCE_RELAY_URL -Headers @{ Authorization = 'Bearer ' + $Oidc } -ContentType 'application/json' -Body $Body
-          if (-not $Response.ok) { throw ([string]$Response.error) }
-          if ([string]$Response.source_sha -ne $env:SOURCE_SHA) { throw 'Relay source SHA mismatch' }
+          $Snapshot = Invoke-RestMethod -Method Post -Uri $Relay -Headers @{
+            Authorization = "Bearer $($Oidc.value)"
+          } -ContentType 'application/json' -Body $Body
 
-          $Root = Join-Path $env:RUNNER_TEMP 'omniphony-compile'
-          if (Test-Path -LiteralPath $Root) { Remove-Item -LiteralPath $Root -Recurse -Force }
+          if ([string]$Snapshot.schema -ne 'helix/github-compile-source/1') {
+            throw "Unexpected source relay schema: $($Snapshot.schema)"
+          }
+          if ([string]$Snapshot.source_sha -ne $env:SOURCE_SHA) {
+            throw "Source relay SHA mismatch: $($Snapshot.source_sha)"
+          }
+          if (@($Snapshot.files).Count -lt 1) {
+            throw 'Source relay returned no files.'
+          }
+
+          $Root = Join-Path $env:RUNNER_TEMP 'omniphony-source'
+          if (Test-Path -LiteralPath $Root) {
+            Remove-Item -LiteralPath $Root -Recurse -Force
+          }
           New-Item -ItemType Directory -Force -Path $Root | Out-Null
 
-          foreach ($File in $Response.files) {
+          foreach ($File in @($Snapshot.files)) {
             $Relative = [string]$File.path
             if ([string]::IsNullOrWhiteSpace($Relative) -or
                 [IO.Path]::IsPathRooted($Relative) -or
                 $Relative.Contains('..')) {
-              throw "Relay returned unsafe path: $Relative"
+              throw "Unsafe source relay path: $Relative"
             }
 
-            $Path = Join-Path $Root $Relative
-            $Parent = Split-Path -Parent $Path
-            if ($Parent) { New-Item -ItemType Directory -Force -Path $Parent | Out-Null }
-            $Bytes = [Convert]::FromBase64String([string]$File.content_b64)
-            [IO.File]::WriteAllBytes($Path, $Bytes)
+            $Target = Join-Path $Root $Relative
+            $Parent = Split-Path -Parent $Target
+            if (-not [string]::IsNullOrWhiteSpace($Parent)) {
+              New-Item -ItemType Directory -Force -Path $Parent | Out-Null
+            }
 
-            $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
-            if ($Hash -ne ([string]$File.sha256).ToLowerInvariant()) {
-              throw "Relay file checksum mismatch: $Relative"
+            [IO.File]::WriteAllBytes(
+              $Target,
+              [Convert]::FromBase64String([string]$File.content_b64)
+            )
+            $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Target).Hash.ToLowerInvariant()
+            if ($Actual -ne [string]$File.sha256) {
+              throw "Source relay hash mismatch for $Relative"
             }
           }
 
-          $Count = @($Response.files).Count
-          if ($Count -ne 44) { throw "Unexpected compile snapshot file count: $Count" }
+          $ShortSha = $env:SOURCE_SHA.Substring(0, 8)
           "source_dir=$Root" >> $env:GITHUB_OUTPUT
-          Write-Host "OMNIPHONY_PRIVATE_COMPILE_SNAPSHOT_OK files=$Count sha=$env:SOURCE_SHA"
+          "short_sha=$ShortSha" >> $env:GITHUB_OUTPUT
+          Write-Host "OMNIPHONY_SOURCE_RELAY_OK sha=$env:SOURCE_SHA files=$(@($Snapshot.files).Count)"
 
       - name: Provision source-pinned .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -108,51 +130,75 @@ jobs:
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
           dotnet build omniphony-renderer/windows_installer/Omniphony.Setup.csproj -c Release
-          if ($LASTEXITCODE -ne 0) { throw "Managed Setup compile failed: $LASTEXITCODE" }
+          if ($LASTEXITCODE -ne 0) { throw "managed setup build failed: $LASTEXITCODE" }
 
-      - name: Configure native APO build
+      - name: Configure native Windows APO build
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
-          cmake -S omniphony-renderer/windows_installer/endpoint_apo -B build/endpoint_apo -A x64
+          cmake -S omniphony-renderer/windows_installer/endpoint_apo -B build/windows-apo -G "Visual Studio 17 2022" -A x64
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed: $LASTEXITCODE" }
 
-      - name: Compile native APO and Windows helpers
+      - name: Compile native Windows APO and helpers
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
-          cmake --build build/endpoint_apo --config Release --parallel
-          if ($LASTEXITCODE -ne 0) { throw "Native Windows compile failed: $LASTEXITCODE" }
-          Write-Host "OMNIPHONY_GITHUB_WINDOWS_COMPILE_OK sha=${{ steps.request.outputs.source_sha }}"
+          cmake --build build/windows-apo --config Release -- /m
+          if ($LASTEXITCODE -ne 0) { throw "native Windows build failed: $LASTEXITCODE" }
 
-      - name: Complete source relay
+      - name: Write compile receipt
+        shell: pwsh
+        env:
+          SOURCE_SHA: "${{ steps.request.outputs.source_sha }}"
+          SOURCE_DIR: "${{ steps.source.outputs.source_dir }}"
+        run: |
+          $Receipt = @{
+            schema = 'omniphony/github-windows-compile/1'
+            source_sha = $env:SOURCE_SHA
+            runner = 'github-hosted/windows-2025'
+            managed_setup = 'compiled'
+            native_windows_apo = 'compiled'
+            completed_at_utc = [DateTimeOffset]::UtcNow.ToString('O')
+          }
+          $Path = Join-Path $env:RUNNER_TEMP 'omniphony-compile-receipt.json'
+          $Receipt | ConvertTo-Json | Set-Content -LiteralPath $Path -Encoding UTF8
+          "receipt=$Path" >> $env:GITHUB_OUTPUT
+          Write-Host "OMNIPHONY_GITHUB_COMPILE_OK sha=$env:SOURCE_SHA"
+
+      - name: Upload compile receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: "omniphony-compile-${{ steps.source.outputs.short_sha }}"
+          path: "${{ runner.temp }}/omniphony-compile-receipt.json"
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Delete staged private source snapshot
         if: always()
         shell: pwsh
         env:
           SOURCE_SHA: "${{ steps.request.outputs.source_sha }}"
-          SOURCE_RELAY_URL: https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/omniphony-github-source
-          JOB_STATUS: "${{ job.status }}"
-        run: |
-          try {
-            $Audience = [uri]::EscapeDataString('omniphony-supabase-compile')
-            $OidcResponse = Invoke-RestMethod -Uri ($env:ACTIONS_ID_TOKEN_REQUEST_URL + '&audience=' + $Audience) -Headers @{ Authorization = 'Bearer ' + $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN }
-            $Body = @{
-              action = 'complete'
-              source_sha = $env:SOURCE_SHA
-              success = ($env:JOB_STATUS -eq 'success')
-            } | ConvertTo-Json -Compress
-            Invoke-RestMethod -Method Post -Uri $env:SOURCE_RELAY_URL -Headers @{ Authorization = 'Bearer ' + [string]$OidcResponse.value } -ContentType 'application/json' -Body $Body | Out-Null
-          } catch {
-            Write-Warning "Compile-source relay completion failed: $($_.Exception.Message)"
-          }
-
-      - name: Remove private source
-        if: always()
-        shell: pwsh
-        env:
           SOURCE_DIR: "${{ steps.source.outputs.source_dir }}"
         run: |
           if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_DIR) -and
               (Test-Path -LiteralPath $env:SOURCE_DIR)) {
             Remove-Item -LiteralPath $env:SOURCE_DIR -Recurse -Force
+          }
+
+          try {
+            $Audience = 'helix-runner-source-relay'
+            $OidcUrl = "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=$Audience"
+            $Oidc = Invoke-RestMethod -Method Get -Uri $OidcUrl -Headers @{
+              Authorization = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+            }
+            $Relay = 'https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/github-compile-source'
+            $Body = @{
+              action = 'delete'
+              source_sha = $env:SOURCE_SHA
+            } | ConvertTo-Json -Compress
+            Invoke-RestMethod -Method Post -Uri $Relay -Headers @{
+              Authorization = "Bearer $($Oidc.value)"
+            } -ContentType 'application/json' -Body $Body | Out-Null
+          } catch {
+            Write-Warning "Source relay cleanup failed: $($_.Exception.Message)"
           }
