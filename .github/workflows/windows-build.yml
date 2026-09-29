@@ -136,7 +136,7 @@ jobs:
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
-          cmake -S omniphony-renderer/windows_installer/endpoint_apo -B build/windows-apo -G "Visual Studio 17 2022" -A x64
+          cmake -S omniphony-renderer/windows_installer/endpoint_apo -B build/windows-apo -A x64
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed: $LASTEXITCODE" }
 
       - name: Compile native Windows APO and helpers
