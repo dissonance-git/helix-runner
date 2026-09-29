@@ -38,6 +38,6 @@ This repository should remain tiny. New routes must be explicit, allowlisted end
 
 ## Resource policy
 
-Standard GitHub-hosted runners are the execution substrate. Omniphony's Windows route now uses direct private GitLab fetch on the hosted runner; no local or self-hosted machine is part of the compile path. The runner repository intentionally uses no persistent cache because the staged candidate is authoritative and the current products are small enough that cache invalidation would add more risk than value.
+Standard GitHub-hosted runners are the execution substrate. Omniphony's Windows route uses the GitHub-OIDC private compile-source relay; no local or self-hosted machine is part of the compile path. The runner repository intentionally uses no persistent cache because the staged candidate is authoritative and the current products are small enough that cache invalidation would add more risk than value.
 
 The retired `api` repository identity is not a source root. Compatibility environment variable names may still contain `API` while migration finishes, but all central source bytes and worker code come from the `helix` repository.
