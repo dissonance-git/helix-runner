@@ -23,7 +23,7 @@ concurrency:
 jobs:
   compile:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Read runner request
@@ -164,6 +164,34 @@ jobs:
           cmake --build build/windows-apo --config Release -- /m
           if ($LASTEXITCODE -ne 0) { throw "native Windows build failed: $LASTEXITCODE" }
 
+      - name: Build single-executable Windows product
+        id: product
+        shell: pwsh
+        working-directory: "${{ steps.source.outputs.source_dir }}"
+        run: |
+          & ./ci/windows-product.ps1 -Configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Windows product build failed: $LASTEXITCODE" }
+
+          $Product = (Resolve-Path 'dist/OmniphonySetup.exe').Path
+          if (-not (Test-Path -LiteralPath $Product -PathType Leaf)) {
+            throw "single-executable Windows product missing: $Product"
+          }
+
+          $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Product).Hash.ToLowerInvariant()
+          $Bytes = (Get-Item -LiteralPath $Product).Length
+          "product=$Product" >> $env:GITHUB_OUTPUT
+          "sha256=$Hash" >> $env:GITHUB_OUTPUT
+          "bytes=$Bytes" >> $env:GITHUB_OUTPUT
+          Write-Host "OMNIPHONY_WINDOWS_PRODUCT_ARTIFACT_OK bytes=$Bytes sha256=$Hash route=legacy-fallback"
+
+      - name: Upload single-executable Windows product
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: "OmniphonySetup-${{ steps.source.outputs.short_sha }}"
+          path: "${{ steps.product.outputs.product }}"
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Write compile receipt
         shell: pwsh
         env:
@@ -177,6 +205,10 @@ jobs:
             managed_setup = 'compiled'
             native_windows_apo = 'compiled'
             nativeaot_setup = 'published'
+            windows_product = 'bundled'
+            product_sha256 = '${{ steps.product.outputs.sha256 }}'
+            product_bytes = '${{ steps.product.outputs.bytes }}'
+            product_route = 'legacy-fallback'
             completed_at_utc = [DateTimeOffset]::UtcNow.ToString('O')
           }
           $Path = Join-Path $env:RUNNER_TEMP 'omniphony-compile-receipt.json'
@@ -193,7 +225,7 @@ jobs:
           retention-days: 1
 
       - name: Delete staged private source snapshot
-        if: success()
+        if: always()
         shell: pwsh
         env:
           SOURCE_SHA: "${{ steps.request.outputs.source_sha }}"
