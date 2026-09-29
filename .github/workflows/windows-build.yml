@@ -119,6 +119,65 @@ jobs:
             }
           }
 
+          # Reassemble explicitly chunked large private source files after every
+          # individual relay row has passed its own SHA-256 check.
+          $ChunkRoot = Join-Path $Root '.relay-chunks'
+          if (Test-Path -LiteralPath $ChunkRoot -PathType Container) {
+            $Manifests = @(Get-ChildItem -LiteralPath $ChunkRoot -Recurse -File -Filter 'manifest.json')
+            foreach ($ManifestFile in $Manifests) {
+              $Manifest = Get-Content -LiteralPath $ManifestFile.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+              if ([string]$Manifest.schema -ne 'helix/relay-chunk-manifest/1') {
+                throw "Unsupported relay chunk manifest: $($ManifestFile.FullName)"
+              }
+
+              $TargetRelative = [string]$Manifest.target_path
+              if ([string]::IsNullOrWhiteSpace($TargetRelative) -or
+                  [IO.Path]::IsPathRooted($TargetRelative) -or
+                  $TargetRelative.Contains('..') -or
+                  $TargetRelative.StartsWith('.relay-chunks', [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Unsafe relay chunk target: $TargetRelative"
+              }
+
+              $BundleDir = $ManifestFile.DirectoryName
+              $Parts = @(Get-ChildItem -LiteralPath $BundleDir -File -Filter '*.part' | Sort-Object Name)
+              if ($Parts.Count -ne [int]$Manifest.parts) {
+                throw "Relay chunk count mismatch for $TargetRelative"
+              }
+
+              $Target = Join-Path $Root $TargetRelative
+              $Parent = Split-Path -Parent $Target
+              if (-not [string]::IsNullOrWhiteSpace($Parent)) {
+                New-Item -ItemType Directory -Force -Path $Parent | Out-Null
+              }
+
+              $Output = [IO.File]::Open($Target, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
+              try {
+                foreach ($Part in $Parts) {
+                  $Input = [IO.File]::OpenRead($Part.FullName)
+                  try {
+                    $Input.CopyTo($Output)
+                  }
+                  finally {
+                    $Input.Dispose()
+                  }
+                }
+              }
+              finally {
+                $Output.Dispose()
+              }
+
+              $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Target).Hash.ToLowerInvariant()
+              if ($Actual -ne [string]$Manifest.sha256) {
+                throw "Reassembled relay hash mismatch for $TargetRelative"
+              }
+              if ((Get-Item -LiteralPath $Target).Length -ne [int64]$Manifest.bytes) {
+                throw "Reassembled relay byte-count mismatch for $TargetRelative"
+              }
+              Write-Host "OMNIPHONY_SOURCE_RELAY_REASSEMBLED path=$TargetRelative parts=$($Parts.Count) sha256=$Actual"
+            }
+            Remove-Item -LiteralPath $ChunkRoot -Recurse -Force
+          }
+
           $ShortSha = $env:SOURCE_SHA.Substring(0, 8)
           "source_dir=$Root" >> $env:GITHUB_OUTPUT
           "short_sha=$ShortSha" >> $env:GITHUB_OUTPUT
