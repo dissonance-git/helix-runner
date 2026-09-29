@@ -69,14 +69,18 @@ jobs:
           $Relay = 'https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/github-compile-source'
           $Body = @{
             action = 'read'
+            project_key = 'omniphony'
             source_sha = $env:SOURCE_SHA
           } | ConvertTo-Json -Compress
           $Snapshot = Invoke-RestMethod -Method Post -Uri $Relay -Headers @{
             Authorization = "Bearer $($Oidc.value)"
           } -ContentType 'application/json' -Body $Body
 
-          if ([string]$Snapshot.schema -ne 'helix/github-compile-source/1') {
+          if ([string]$Snapshot.schema -ne 'helix/github-compile-source/2') {
             throw "Unexpected source relay schema: $($Snapshot.schema)"
+          }
+          if ([string]$Snapshot.project_key -ne 'omniphony') {
+            throw "Source relay project mismatch: $($Snapshot.project_key)"
           }
           if ([string]$Snapshot.source_sha -ne $env:SOURCE_SHA) {
             throw "Source relay SHA mismatch: $($Snapshot.source_sha)"
@@ -209,6 +213,7 @@ jobs:
             $Relay = 'https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/github-compile-source'
             $Body = @{
               action = 'delete'
+              project_key = 'omniphony'
               source_sha = $env:SOURCE_SHA
             } | ConvertTo-Json -Compress
             Invoke-RestMethod -Method Post -Uri $Relay -Headers @{
