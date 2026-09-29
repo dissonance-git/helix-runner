@@ -7,8 +7,8 @@ on:
       - request.json
   workflow_dispatch:
     inputs:
-      build_id:
-        description: Staged Helix build UUID
+      source_sha:
+        description: Canonical Omniphony GitLab commit SHA
         required: true
         type: string
       publish_release:
@@ -24,7 +24,7 @@ permissions:
   artifact-metadata: write
 
 concurrency:
-  group: helix-windows-build
+  group: omniphony-windows-build
   cancel-in-progress: true
 
 jobs:
@@ -32,97 +32,90 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     outputs:
-      source_sha: "${{ steps.source.outputs.base_sha }}"
+      source_sha: "${{ steps.source.outputs.source_sha }}"
       short_sha: "${{ steps.source.outputs.short_sha }}"
 
     steps:
-      - name: Read build request
+      - name: Read runner request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Resolve build id
+      - name: Resolve canonical source SHA
         id: request
         shell: pwsh
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $BuildId = "${{ inputs.build_id }}"
+            $SourceSha = "${{ inputs.source_sha }}"
           } else {
             $Request = Get-Content -LiteralPath request.json -Raw -Encoding UTF8 | ConvertFrom-Json
-            $BuildId = [string]$Request.build_id
+            if ([string]$Request.schema -ne 'omniphony-github-build-request/1') {
+              throw "Unsupported request schema: $($Request.schema)"
+            }
+            $SourceSha = [string]$Request.source_sha
           }
-          if ($BuildId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
-            throw "Invalid staged build id: $BuildId"
-          }
-          "build_id=$BuildId" >> $env:GITHUB_OUTPUT
 
-      - name: Claim exact source bundle
+          if ($SourceSha -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "Invalid Omniphony source SHA: $SourceSha"
+          }
+
+          "source_sha=$($SourceSha.ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Fetch exact private Omniphony source from GitLab
         id: source
         shell: pwsh
         env:
-          BUILD_ID: "${{ steps.request.outputs.build_id }}"
-          HELIX_BUILD_URL: https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/helix-build
+          SOURCE_SHA: "${{ steps.request.outputs.source_sha }}"
+          OMNIPHONY_GITLAB_TOKEN: "${{ secrets.OMNIPHONY_GITLAB_TOKEN }}"
+          GITLAB_READ_TOKEN: "${{ secrets.GITLAB_READ_TOKEN }}"
+          GITLAB_TOKEN: "${{ secrets.GITLAB_TOKEN }}"
         run: |
-          $Audience = [uri]::EscapeDataString('helix-supabase-build')
-          $OidcResponse = Invoke-RestMethod -Uri ($env:ACTIONS_ID_TOKEN_REQUEST_URL + '&audience=' + $Audience) -Headers @{ Authorization = 'Bearer ' + $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN }
-          $Oidc = [string]$OidcResponse.value
-          if ([string]::IsNullOrWhiteSpace($Oidc)) { throw 'GitHub OIDC token unavailable' }
+          $Token = @(
+            $env:OMNIPHONY_GITLAB_TOKEN,
+            $env:GITLAB_READ_TOKEN,
+            $env:GITLAB_TOKEN
+          ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
 
-          $Body = @{
-            action = 'claim'
-            build_id = $env:BUILD_ID
-            oidc_token = $Oidc
-          } | ConvertTo-Json -Compress
-          $Response = Invoke-RestMethod -Method Post -Uri $env:HELIX_BUILD_URL -ContentType 'application/json' -Body $Body
-          if (-not $Response.ok) { throw ([string]$Response.error) }
-
-          $Build = $Response.build
-          if ([string]$Build.repo -ne 'omniphony') { throw 'Build repository rejected' }
-          if ([string]$Build.route -ne 'windows-product') { throw 'Build route rejected' }
-          if ([string]$Build.artifact -ne 'dist/OmniphonySetup.exe') { throw 'Artifact contract rejected' }
-
-          $Root = Join-Path $env:RUNNER_TEMP 'helix-build'
-          $Parts = Join-Path $Root 'parts'
-          New-Item -ItemType Directory -Force -Path $Parts | Out-Null
-          $Bundle = Join-Path $Root 'source.tar.gz'
-          $Output = [System.IO.File]::Open($Bundle, [System.IO.FileMode]::Create)
-          try {
-            foreach ($Chunk in ($Build.chunks | Sort-Object index)) {
-              $Part = Join-Path $Parts ('part-{0:D5}.bin' -f [int]$Chunk.index)
-              Invoke-WebRequest -Uri ([string]$Chunk.signed_url) -OutFile $Part
-              $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Part).Hash.ToLowerInvariant()
-              if ($Hash -ne ([string]$Chunk.sha256).ToLowerInvariant()) {
-                throw "Chunk checksum mismatch at index $($Chunk.index)"
-              }
-              $Bytes = [System.IO.File]::ReadAllBytes($Part)
-              $Output.Write($Bytes, 0, $Bytes.Length)
-            }
-          } finally {
-            $Output.Dispose()
+          if ([string]::IsNullOrWhiteSpace($Token)) {
+            throw 'No GitLab read token is configured in GitHub Actions. Configure one of OMNIPHONY_GITLAB_TOKEN, GITLAB_READ_TOKEN, or GITLAB_TOKEN with read_repository access.'
           }
 
-          $BundleHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Bundle).Hash.ToLowerInvariant()
-          if ($BundleHash -ne ([string]$Build.sha256).ToLowerInvariant()) {
-            throw 'Source bundle checksum mismatch'
+          $Root = Join-Path $env:RUNNER_TEMP 'omniphony-source'
+          if (Test-Path -LiteralPath $Root) {
+            Remove-Item -LiteralPath $Root -Recurse -Force
           }
-          Remove-Item -LiteralPath $Parts -Recurse -Force
+          New-Item -ItemType Directory -Force -Path $Root | Out-Null
 
-          tar -xzf $Bundle -C $Root
-          if ($LASTEXITCODE -ne 0) { throw "Source extraction failed: $LASTEXITCODE" }
+          $Basic = [Convert]::ToBase64String(
+            [Text.Encoding]::ASCII.GetBytes("oauth2:$Token")
+          )
+          $env:GIT_CONFIG_COUNT = '1'
+          $env:GIT_CONFIG_KEY_0 = 'http.extraHeader'
+          $env:GIT_CONFIG_VALUE_0 = "Authorization: Basic $Basic"
 
-          $Manifest = Get-Content -LiteralPath (Join-Path $Root '.helix-build.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-          if ([string]$Manifest.repo -ne 'omniphony' -or [string]$Manifest.route -ne 'windows-product') {
-            throw 'Extracted build manifest rejected'
+          git -C $Root init .
+          if ($LASTEXITCODE -ne 0) { throw "git init failed: $LASTEXITCODE" }
+          git -C $Root remote add origin https://gitlab.com/dissonance-git/omniphony.git
+          if ($LASTEXITCODE -ne 0) { throw "git remote add failed: $LASTEXITCODE" }
+          git -C $Root fetch --no-tags --depth 1 origin $env:SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) { throw "git fetch failed: $LASTEXITCODE" }
+          git -C $Root checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "git checkout failed: $LASTEXITCODE" }
+
+          Remove-Item Env:GIT_CONFIG_COUNT -ErrorAction SilentlyContinue
+          Remove-Item Env:GIT_CONFIG_KEY_0 -ErrorAction SilentlyContinue
+          Remove-Item Env:GIT_CONFIG_VALUE_0 -ErrorAction SilentlyContinue
+
+          $ActualSha = (git -C $Root rev-parse HEAD).Trim().ToLowerInvariant()
+          if ($ActualSha -ne $env:SOURCE_SHA.ToLowerInvariant()) {
+            throw "Fetched source SHA mismatch: expected $env:SOURCE_SHA got $ActualSha"
           }
-          if ([string]$Manifest.base_sha -ne [string]$Build.base_sha) {
-            throw 'Build manifest base SHA mismatch'
-          }
 
-          $ShortSha = ([string]$Build.base_sha).Substring(0, 8)
-          "source_dir=$($Root + '\source')" >> $env:GITHUB_OUTPUT
-          "artifact=$($Root + '\source\dist\OmniphonySetup.exe')" >> $env:GITHUB_OUTPUT
+          $ShortSha = $ActualSha.Substring(0, 8)
+          "source_dir=$Root" >> $env:GITHUB_OUTPUT
+          "artifact=$Root\dist\OmniphonySetup.exe" >> $env:GITHUB_OUTPUT
+          "source_sha=$ActualSha" >> $env:GITHUB_OUTPUT
           "short_sha=$ShortSha" >> $env:GITHUB_OUTPUT
-          "base_sha=$([string]$Build.base_sha)" >> $env:GITHUB_OUTPUT
 
       - name: Provision source-pinned .NET SDK
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -133,7 +126,7 @@ jobs:
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         env:
-          OMNIPHONY_SOURCE_SHA: "${{ steps.source.outputs.base_sha }}"
+          OMNIPHONY_SOURCE_SHA: "${{ steps.source.outputs.source_sha }}"
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File ci/windows-product.ps1
 
@@ -147,8 +140,10 @@ jobs:
           }
           $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $env:ARTIFACT).Hash.ToLowerInvariant()
           $Bytes = (Get-Item -LiteralPath $env:ARTIFACT).Length
-          if ($Bytes -gt 209715200) { throw "Artifact exceeds 200 MiB storage guard: $Bytes bytes" }
-          Write-Host "HELIX_WINDOWS_BUILD_OK bytes=$Bytes sha256=$Hash"
+          if ($Bytes -gt 209715200) {
+            throw "Artifact exceeds 200 MiB storage guard: $Bytes bytes"
+          }
+          Write-Host "OMNIPHONY_GITHUB_WINDOWS_BUILD_OK bytes=$Bytes sha256=$Hash"
 
       - name: Attest Windows product provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -164,24 +159,15 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      - name: Remove staged source
-        if: always() && steps.request.outputs.build_id != ''
+      - name: Remove private source
+        if: always()
         shell: pwsh
         env:
-          BUILD_ID: "${{ steps.request.outputs.build_id }}"
-          HELIX_BUILD_URL: https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/helix-build
+          SOURCE_DIR: "${{ steps.source.outputs.source_dir }}"
         run: |
-          try {
-            $Audience = [uri]::EscapeDataString('helix-supabase-build')
-            $OidcResponse = Invoke-RestMethod -Uri ($env:ACTIONS_ID_TOKEN_REQUEST_URL + '&audience=' + $Audience) -Headers @{ Authorization = 'Bearer ' + $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN }
-            $Body = @{
-              action = 'complete'
-              build_id = $env:BUILD_ID
-              oidc_token = [string]$OidcResponse.value
-            } | ConvertTo-Json -Compress
-            Invoke-RestMethod -Method Post -Uri $env:HELIX_BUILD_URL -ContentType 'application/json' -Body $Body | Out-Null
-          } catch {
-            Write-Warning "Staged-source cleanup failed"
+          if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_DIR) -and
+              (Test-Path -LiteralPath $env:SOURCE_DIR)) {
+            Remove-Item -LiteralPath $env:SOURCE_DIR -Recurse -Force
           }
 
   release:
@@ -214,4 +200,8 @@ jobs:
             echo "Release $TAG already exists; refusing to mutate it."
             exit 1
           fi
-          gh release create "$TAG" OmniphonySetup.exe             --repo "$GITHUB_REPOSITORY"             --target "$GITHUB_SHA"             --title "Omniphony $SHORT_SHA"             --notes "Verified Windows installer built from canonical Omniphony source $SOURCE_SHA. Build provenance is recorded by the associated GitHub artifact attestation."
+          gh release create "$TAG" OmniphonySetup.exe \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Omniphony $SHORT_SHA" \
+            --notes "Verified Windows installer built on GitHub-hosted windows-2025 from canonical private GitLab Omniphony source $SOURCE_SHA."
