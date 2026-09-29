@@ -6,17 +6,16 @@ This repository is **not** a source mirror, project workspace, validation author
 
 ## Hosted runner status
 
-This repository remains the public home for disposable GitHub-hosted Helix execution. The former `helix-workspace` and `helix-build` Supabase source-broker functions are retired and return HTTP 410. Workflows that still call those brokers are retained as migration evidence/control code, not as currently available verification routes.
+This repository is the public control surface for disposable **GitHub-hosted** execution. It does not use a local runner, self-hosted runner, or GitLab runner.
 
-The next hosted source handoff must bind GitHub-hosted runners to the current admitted private transport without making this public repository a source mirror or introducing GitLab runner state.
+For Omniphony Windows builds, the `windows-build.yml` workflow runs on GitHub-hosted `windows-2025`, reads only an exact canonical GitLab commit SHA from the public request, and fetches that private commit at runtime with a repository read-only GitLab credential stored in GitHub Actions secrets. Private source is never committed to this repository and is deleted from the hosted runner after the job.
 
 ```text
-canonical private project bytes
-→ current admitted private handoff
-→ opaque job identity
-→ GitHub-hosted runner
-→ bounded project verifier
-→ retained result/evidence
+canonical private GitLab commit SHA
+→ GitHub Actions read-only GitLab credential
+→ GitHub-hosted windows-2025
+→ ci/windows-product.ps1
+→ attested short-lived build artifact
 ```
 
 ## Windows runner target
@@ -30,7 +29,7 @@ exact admitted private source
 → bounded artifact/evidence
 ```
 
-For Omniphony, the verifier remains `ci/windows-product.ps1`. For EFT2, the engine-independent reference verifier remains `tools/run-verification.ps1 reference`. The checked-in `windows-build.yml`, `workspace*.yml`, and request files still document the previous broker protocol, but they are not current authority while that broker is retired.
+For Omniphony, the verifier is `ci/windows-product.ps1` running on GitHub-hosted Windows. The old Supabase source-broker protocol is retired and is no longer used by `windows-build.yml`.
 
 The public repository stores no GitLab credentials, project source, Supabase service-role key, or persistent worker token. Any replacement handoff must preserve those properties.
 
@@ -38,6 +37,6 @@ This repository should remain tiny. New routes must be explicit, allowlisted end
 
 ## Resource policy
 
-Standard GitHub-hosted runners remain the intended hosted execution substrate. A workflow is usable only when its private-source handoff is also live and admitted. Retired broker-dependent workflows must not be cited as successful verification. The runner repository intentionally uses no persistent cache because the staged candidate is authoritative and the current products are small enough that cache invalidation would add more risk than value.
+Standard GitHub-hosted runners are the execution substrate. Omniphony's Windows route now uses direct private GitLab fetch on the hosted runner; no local or self-hosted machine is part of the compile path. The runner repository intentionally uses no persistent cache because the staged candidate is authoritative and the current products are small enough that cache invalidation would add more risk than value.
 
 The retired `api` repository identity is not a source root. Compatibility environment variable names may still contain `API` while migration finishes, but all central source bytes and worker code come from the `helix` repository.
