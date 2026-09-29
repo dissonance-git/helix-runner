@@ -7,9 +7,9 @@ on:
       - "windows-workspace-request.json"
   workflow_dispatch:
     inputs:
-      job_id:
-        description: Exact Helix workspace job UUID
-        required: false
+      source_sha:
+        description: Canonical Helix GitLab commit SHA
+        required: true
         type: string
 
 permissions:
@@ -17,61 +17,175 @@ permissions:
   id-token: write
 
 concurrency:
-  group: helix-workspace-windows
+  group: helix-hosted-windows-build
   cancel-in-progress: true
 
 jobs:
-  execute:
+  build:
     runs-on: windows-2025
     timeout-minutes: 30
+
     steps:
-      - name: Check out runner control surface
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Read runner control surface
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Provision pinned .NET 11 RC1 SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
-        with:
-          dotnet-version: '11.0.100-rc.1.26425.128'
-
-      - name: Record Windows and SDK identity
-        shell: pwsh
-        run: |
-          [System.Environment]::OSVersion.VersionString
-          python --version
-          dotnet --version
-          dotnet --list-sdks
-
-      - name: Resolve exact workspace job
+      - name: Resolve canonical Helix source SHA
         id: request
         shell: pwsh
         run: |
-          $Qualification = ''
-          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and -not [string]::IsNullOrWhiteSpace("${{ inputs.job_id }}")) {
-            $JobId = "${{ inputs.job_id }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $SourceSha = "${{ inputs.source_sha }}"
           } else {
             $Request = Get-Content -LiteralPath windows-workspace-request.json -Raw -Encoding UTF8 | ConvertFrom-Json
-            $JobId = [string]$Request.job_id
-            $Qualification = [string]$Request.qualification
+            if ([string]$Request.schema -ne 'helix-github-build-request/1') {
+              throw "Unsupported request schema: $($Request.schema)"
+            }
+            $SourceSha = [string]$Request.source_sha
           }
-          if ($JobId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
-            throw "Invalid workspace job id: $JobId"
-          }
-          "job_id=$JobId" >> $env:GITHUB_OUTPUT
-          "qualification=$Qualification" >> $env:GITHUB_OUTPUT
 
-      - name: Execute exact qualified Helix workspace job
-        if: steps.request.outputs.qualification == 'appcontainer'
+          if ($SourceSha -notmatch '^[0-9a-fA-F]{40}$') {
+            throw "Invalid Helix source SHA: $SourceSha"
+          }
+          "source_sha=$($SourceSha.ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Claim bounded private Helix source snapshot
+        id: source
         shell: pwsh
         env:
-          HELIX_WINDOWS_PREFLIGHT: '0'
-        run: python workspace.py "${{ steps.request.outputs.job_id }}"
+          SOURCE_SHA: "${{ steps.request.outputs.source_sha }}"
+        run: |
+          $Audience = 'helix-runner-source-relay'
+          $OidcUrl = "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=$Audience"
+          $Oidc = Invoke-RestMethod -Method Get -Uri $OidcUrl -Headers @{
+            Authorization = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          }
+          if ([string]::IsNullOrWhiteSpace([string]$Oidc.value)) {
+            throw 'GitHub OIDC token request returned no token.'
+          }
 
-      - name: Execute exact ordinary Helix workspace job
-        if: steps.request.outputs.qualification != 'appcontainer'
+          $Relay = 'https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/github-compile-source'
+          $Body = @{
+            action = 'read'
+            project_key = 'helix'
+            source_sha = $env:SOURCE_SHA
+          } | ConvertTo-Json -Compress
+          $Snapshot = Invoke-RestMethod -Method Post -Uri $Relay -Headers @{
+            Authorization = "Bearer $($Oidc.value)"
+          } -ContentType 'application/json' -Body $Body
+
+          if ([string]$Snapshot.schema -ne 'helix/github-compile-source/2') {
+            throw "Unexpected source relay schema: $($Snapshot.schema)"
+          }
+          if ([string]$Snapshot.project_key -ne 'helix') {
+            throw "Source relay project mismatch: $($Snapshot.project_key)"
+          }
+          if ([string]$Snapshot.source_sha -ne $env:SOURCE_SHA) {
+            throw "Source relay SHA mismatch: $($Snapshot.source_sha)"
+          }
+
+          $Root = Join-Path $env:RUNNER_TEMP 'helix-source'
+          if (Test-Path -LiteralPath $Root) {
+            Remove-Item -LiteralPath $Root -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $Root | Out-Null
+
+          foreach ($File in @($Snapshot.files)) {
+            $Relative = [string]$File.path
+            if ([string]::IsNullOrWhiteSpace($Relative) -or
+                [IO.Path]::IsPathRooted($Relative) -or
+                $Relative.Contains('..')) {
+              throw "Unsafe source relay path: $Relative"
+            }
+
+            $Target = Join-Path $Root $Relative
+            $Parent = Split-Path -Parent $Target
+            if (-not [string]::IsNullOrWhiteSpace($Parent)) {
+              New-Item -ItemType Directory -Force -Path $Parent | Out-Null
+            }
+
+            [IO.File]::WriteAllBytes(
+              $Target,
+              [Convert]::FromBase64String([string]$File.content_b64)
+            )
+            $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Target).Hash.ToLowerInvariant()
+            if ($Actual -ne [string]$File.sha256) {
+              throw "Source relay hash mismatch for $Relative"
+            }
+          }
+
+          "source_dir=$Root" >> $env:GITHUB_OUTPUT
+          Write-Host "HELIX_WINDOWS_SOURCE_RELAY_OK sha=$env:SOURCE_SHA files=$(@($Snapshot.files).Count)"
+
+      - name: Provision source-pinned .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: "${{ steps.source.outputs.source_dir }}/global.json"
+
+      - name: Build Helix solution on Windows
+        shell: pwsh
+        working-directory: "${{ steps.source.outputs.source_dir }}"
+        run: |
+          dotnet build Helix.slnx --nologo
+          if ($LASTEXITCODE -ne 0) { throw "Helix Windows build failed: $LASTEXITCODE" }
+          Write-Host "HELIX_GITHUB_WINDOWS_BUILD_OK sha=${{ steps.request.outputs.source_sha }}"
+
+      - name: Run canonical Helix self-test on Windows
+        shell: pwsh
+        working-directory: "${{ steps.source.outputs.source_dir }}"
+        run: |
+          dotnet run --project operators/service/Helix.Service.csproj -- self-test
+          if ($LASTEXITCODE -ne 0) { throw "Helix Windows self-test failed: $LASTEXITCODE" }
+          Write-Host "HELIX_GITHUB_WINDOWS_SELF_TEST_OK sha=${{ steps.request.outputs.source_sha }}"
+
+      - name: Write hosted Windows verification receipt
         shell: pwsh
         env:
-          HELIX_WINDOWS_PREFLIGHT: '1'
-        run: python workspace.py "${{ steps.request.outputs.job_id }}"
+          SOURCE_SHA: "${{ steps.request.outputs.source_sha }}"
+        run: |
+          $Receipt = @{
+            schema = 'helix/github-hosted-windows-verification/1'
+            source_sha = $env:SOURCE_SHA
+            runner = 'github-hosted/windows-2025'
+            solution_build = 'passed'
+            service_self_test = 'passed'
+            completed_at_utc = [DateTimeOffset]::UtcNow.ToString('O')
+          }
+          $Path = Join-Path $env:RUNNER_TEMP 'helix-hosted-windows-verification.json'
+          $Receipt | ConvertTo-Json | Set-Content -LiteralPath $Path -Encoding UTF8
 
+      - name: Upload hosted Windows verification receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: "helix-hosted-windows-verification"
+          path: "${{ runner.temp }}/helix-hosted-windows-verification.json"
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Delete staged private Helix snapshot
+        if: success()
+        shell: pwsh
+        env:
+          SOURCE_SHA: "${{ steps.request.outputs.source_sha }}"
+          SOURCE_DIR: "${{ steps.source.outputs.source_dir }}"
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:SOURCE_DIR) -and
+              (Test-Path -LiteralPath $env:SOURCE_DIR)) {
+            Remove-Item -LiteralPath $env:SOURCE_DIR -Recurse -Force
+          }
+
+          $Audience = 'helix-runner-source-relay'
+          $OidcUrl = "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=$Audience"
+          $Oidc = Invoke-RestMethod -Method Get -Uri $OidcUrl -Headers @{
+            Authorization = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          }
+          $Relay = 'https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/github-compile-source'
+          $Body = @{
+            action = 'delete'
+            project_key = 'helix'
+            source_sha = $env:SOURCE_SHA
+          } | ConvertTo-Json -Compress
+          Invoke-RestMethod -Method Post -Uri $Relay -Headers @{
+            Authorization = "Bearer $($Oidc.value)"
+          } -ContentType 'application/json' -Body $Body | Out-Null
