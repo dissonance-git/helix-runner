@@ -17,12 +17,17 @@ def fail(message: str) -> None:
     raise SystemExit(f"policy: {message}")
 
 
-def active_text() -> str:
+def execution_text() -> str:
+    """Return executable/control surfaces, excluding explanatory prose.
+
+    Documentation must be allowed to state that retired/local runner modes are
+    forbidden without that negated statement itself violating policy.
+    """
     chunks: list[str] = []
     for path in ROOT.rglob("*"):
         if not path.is_file() or ".git" in path.parts:
             continue
-        if path.suffix.lower() not in {".md", ".py", ".ps1", ".yml", ".yaml", ".json"}:
+        if path.suffix.lower() not in {".py", ".ps1", ".yml", ".yaml", ".json"}:
             continue
         chunks.append(path.read_text(encoding="utf-8", errors="replace"))
     return "\n".join(chunks)
@@ -31,10 +36,10 @@ def active_text() -> str:
 if (ROOT / ".gitlab-ci.yml").exists():
     fail("retired provider CI file is present")
 
-corpus = active_text()
+corpus = execution_text()
 for pattern in RETIRED_PATTERNS:
     if pattern.search(corpus):
-        fail("retired local execution terminology was reintroduced")
+        fail("retired runner execution terminology was reintroduced in an executable/control surface")
 
 for path in sorted(WORKFLOWS.glob("*.y*ml")):
     text = path.read_text(encoding="utf-8")
