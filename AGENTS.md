@@ -8,7 +8,7 @@ This repository is a disposable build-control surface, not a project source repo
 - Hosted requests may carry only opaque admitted job/build identifiers.
 - Private project source must never be copied into this public repository.
 - The former `helix-build` and `helix-workspace` Supabase brokers are retired and must not be revived.
-- Omniphony Windows builds use direct read-only fetch of an exact canonical GitLab commit on a standard GitHub-hosted `windows-2025` runner. The GitLab credential lives only in GitHub Actions secrets and private source is removed after the job.
+- Omniphony Windows builds use an exact canonical GitLab commit staged as a bounded private compile snapshot, fetched on a standard GitHub-hosted `windows-2025` runner through GitHub OIDC. Every file is hash-verified and the snapshot is deleted after the job. No GitLab credential or project source is stored in this public repository.
 - Windows workflows may execute only explicit allowlisted project/route pairs.
 - GitHub OIDC, when used, must be scoped to this repository, `main`, and the exact workflow file.
 - Do not accept arbitrary commands, arbitrary artifact paths, or arbitrary repository URLs as workflow inputs.
