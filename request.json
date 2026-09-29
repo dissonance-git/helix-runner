@@ -1,4 +1,5 @@
 {
   "schema": "omniphony-github-build-request/1",
-  "source_sha": "ed565beb0a380b736fa6429ec7895183dacdfd0e"
+  "source_sha": "ed565beb0a380b736fa6429ec7895183dacdfd0e",
+  "request_nonce": "nativeaot-1"
 }
