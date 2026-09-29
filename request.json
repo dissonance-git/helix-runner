@@ -1,4 +1,4 @@
 {
-  "schema": "helix-build-request/1",
-  "build_id": "93d93b96-2028-42fd-b889-980fcb717bb9"
+  "schema": "omniphony-github-build-request/1",
+  "source_sha": "f005411d92a7dd66e4cb89f1139a6916511f5859"
 }
