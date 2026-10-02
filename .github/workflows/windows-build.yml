@@ -253,8 +253,9 @@ jobs:
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
-          & ./ci/windows-product.ps1 -Configuration Release
-          if ($LASTEXITCODE -ne 0) { throw "Windows product build failed: $LASTEXITCODE" }
+          $Tool = (Resolve-Path 'build/tooling-aot/Omniphony.Tooling.exe').Path
+          & $Tool windows-product --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "managed Windows product build failed: $LASTEXITCODE" }
 
           $Product = (Resolve-Path 'dist/OmniphonySetup.exe').Path
           if (-not (Test-Path -LiteralPath $Product -PathType Leaf)) {
