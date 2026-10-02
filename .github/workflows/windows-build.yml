@@ -188,6 +188,31 @@ jobs:
         with:
           global-json-file: "${{ steps.source.outputs.source_dir }}/global.json"
 
+      - name: Compile and prove NativeAOT Omniphony tooling
+        shell: pwsh
+        working-directory: "${{ steps.source.outputs.source_dir }}"
+        run: |
+          dotnet build omniphony-managed/Omniphony.Tooling/Omniphony.Tooling.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "managed tooling build failed: $LASTEXITCODE" }
+
+          dotnet publish omniphony-managed/Omniphony.Tooling/Omniphony.Tooling.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -o build/tooling-aot
+          if ($LASTEXITCODE -ne 0) { throw "NativeAOT tooling publish failed: $LASTEXITCODE" }
+
+          $Tool = Join-Path (Resolve-Path build/tooling-aot).Path 'Omniphony.Tooling.exe'
+          if (-not (Test-Path -LiteralPath $Tool -PathType Leaf)) {
+            throw "NativeAOT tooling executable missing: $Tool"
+          }
+
+          & $Tool self-test
+          if ($LASTEXITCODE -ne 0) { throw "NativeAOT tooling self-test failed: $LASTEXITCODE" }
+
+          & $Tool preflight
+          if ($LASTEXITCODE -ne 0) { throw "NativeAOT tooling preflight failed: $LASTEXITCODE" }
+
+          $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Tool).Hash.ToLowerInvariant()
+          $Bytes = (Get-Item -LiteralPath $Tool).Length
+          Write-Host "OMNIPHONY_TOOLING_AOT_OK bytes=$Bytes sha256=$Hash"
+
       - name: Compile managed Windows setup
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
