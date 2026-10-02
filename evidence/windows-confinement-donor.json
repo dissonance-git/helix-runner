@@ -2,8 +2,8 @@
   "schema": "helix-windows-confinement-donor-v1",
   "donor": "microsoft/mxc",
   "donor_sha": "e8fa1f1d9bb1bbdf4cff8f341612f1ca7f320085",
-  "runner_sha": "3ae79f97100f892c046f6dbf67b6af7c08d98dd0",
-  "run_id": "36295767423",
+  "runner_sha": "decd8cb973a439325258a3542fb6b1970b6c3560",
+  "run_id": "36962262779",
   "windows": {
     "caption": "Microsoft Windows Server 2025 Datacenter",
     "version": "10.0.26100",
@@ -13,8 +13,8 @@
   "witness_outcome": "failure",
   "probe": "{\r\n  \"tier\": \"appcontainer-dacl\",\r\n  \"needsDaclAugmentation\": true,\r\n  \"warnings\": [\r\n    \"BaseContainer tier not selected, and AppContainer + BFS is not compiled into this binary; falling back to AppContainer + DACL\"\r\n  ],\r\n  \"probes\": {\r\n    \"baseContainerApiPresent\": false,\r\n    \"nativeCaptureAvailable\": false,\r\n    \"guardedCaptureAvailable\": false,\r\n    \"bfscfgPresent\": false,\r\n    \"bfsCompiledIn\": false,\r\n    \"baseContainerSupportsDenyPaths\": false,\r\n    \"baseContainerSupportsEnumeratePaths\": false,\r\n    \"baseContainerSupportsIngressHostLoopbackAllow\": false,\r\n    \"isolationSessionAvailable\": false,\r\n    \"hyperlightAvailable\": false,\r\n    \"uiCapabilities\": {\r\n      \"canBlockClipboardRead\": true,\r\n      \"canBlockClipboardWrite\": true,\r\n      \"canBlockInputInjection\": true,\r\n      \"canBlockInputMethodChanges\": true,\r\n      \"canBlockExternalUiObjects\": true,\r\n      \"canBlockGlobalUiNamespace\": true,\r\n      \"canBlockDesktopSwitching\": true,\r\n      \"canBlockLogoffOrShutdown\": true,\r\n      \"canBlockSystemParameterChanges\": true,\r\n      \"canBlockDisplaySettingsChanges\": true\r\n    }\r\n  }\r\n}\r\n",
   "results": {
-    "timestamp": "2026-09-27T05:04:05.8993371+00:00",
-    "host": "runnervm99s1a",
+    "timestamp": "2026-10-02T04:01:48.6827257+00:00",
+    "host": "runnervmfi6oq",
     "os": "Microsoft Windows Server 2025 Datacenter",
     "osBuild": "26100",
     "total": 49,
@@ -211,7 +211,7 @@
         "Name": "sandbox blocks ping (failed fast, < 5s)",
         "Pass": true,
         "Status": "pass",
-        "Detail": "ran=True; elapsed=0.08s"
+        "Detail": "ran=True; elapsed=0.09s"
       },
       {
         "Phase": "P4",
