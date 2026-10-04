@@ -192,10 +192,10 @@ jobs:
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
-          dotnet build omniphony-managed/Omniphony.Tooling/Omniphony.Tooling.csproj -c Release
+          dotnet build tooling/Omniphony.Tooling.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw "managed tooling build failed: $LASTEXITCODE" }
 
-          dotnet publish omniphony-managed/Omniphony.Tooling/Omniphony.Tooling.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -o build/tooling-aot
+          dotnet publish tooling/Omniphony.Tooling.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -o build/tooling-aot
           if ($LASTEXITCODE -ne 0) { throw "NativeAOT tooling publish failed: $LASTEXITCODE" }
 
           $Tool = Join-Path (Resolve-Path build/tooling-aot).Path 'Omniphony.Tooling.exe'
@@ -217,14 +217,14 @@ jobs:
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
-          dotnet build omniphony-renderer/windows_installer/Omniphony.Setup.csproj -c Release
+          dotnet build windows/setup/Omniphony.Setup.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw "managed setup build failed: $LASTEXITCODE" }
 
       - name: Publish NativeAOT Windows setup
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
-          dotnet publish omniphony-renderer/windows_installer/Omniphony.Setup.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -o build/setup-aot
+          dotnet publish windows/setup/Omniphony.Setup.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -o build/setup-aot
           if ($LASTEXITCODE -ne 0) { throw "NativeAOT setup publish failed: $LASTEXITCODE" }
           $Exe = Join-Path (Resolve-Path build/setup-aot).Path 'Omniphony.Setup.exe'
           if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
@@ -238,7 +238,7 @@ jobs:
         shell: pwsh
         working-directory: "${{ steps.source.outputs.source_dir }}"
         run: |
-          cmake -S omniphony-renderer/windows_installer/endpoint_apo -B build/windows-apo -A x64
+          cmake -S windows/apo -B build/windows-apo -A x64
           if ($LASTEXITCODE -ne 0) { throw "CMake configure failed: $LASTEXITCODE" }
 
       - name: Compile native Windows APO and helpers
