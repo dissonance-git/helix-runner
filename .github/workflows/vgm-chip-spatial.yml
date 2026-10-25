@@ -60,7 +60,8 @@ jobs:
             'modules/vgm/ChipCrossfeed.hpp',
             'modules/vgm/chip-spatial-bed-test.cpp',
             'modules/vgm/foo_input_vgm/src/ChipHardwarePan.hpp',
-            'modules/vgm/foo_input_vgm/src/ChipSpatialBed.hpp'
+            'modules/vgm/foo_input_vgm/src/ChipSpatialBed.hpp',
+            'modules/vgm/foo_input_vgm/src/ChipVoiceTimeline.hpp'
           )
           if (@($snapshot.files).Count -ne $expected.Count) { throw 'Unapproved snapshot file count' }
           $root = Join-Path $env:RUNNER_TEMP 'private-vgm-compile'
