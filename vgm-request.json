@@ -1,6 +1,6 @@
 {
   "schema": "omniphony-vgm-github-build-request/1",
-  "source_sha": "f2e9fd9d0a07f372951dc4e3191af0794f4ff3f9",
-  "attempt": 3,
-  "stage": "crossfeed-exact-source"
+  "source_sha": "2f87559213eb9d3ffc0d5d3d4e06042aa604b09a",
+  "attempt": 4,
+  "stage": "real-libvgm-ym2612-surround-experiment"
 }
