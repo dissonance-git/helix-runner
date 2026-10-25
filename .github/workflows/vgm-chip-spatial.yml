@@ -107,7 +107,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'zlib checkout failed' }
           $libvgm = Join-Path $deps 'libvgm'
           $zlib = Join-Path $deps 'zlib'
-          cmake -S $zlib -B (Join-Path $deps 'zlib-build') -G 'Visual Studio 17 2022' -A x64 -DZLIB_BUILD_EXAMPLES=OFF
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $version = (& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion).Trim()
+          $generator = if ($version -match '^18\\.') { 'Visual Studio 18 2026' } elseif ($version -match '^17\\.') { 'Visual Studio 17 2022' } else { throw "Unsupported MSVC version: $version" }
+          Write-Host "FM_COMPILER_TOOLCHAIN version=$version generator=$generator"
+          cmake -S $zlib -B (Join-Path $deps 'zlib-build') -G $generator -A x64 -DZLIB_BUILD_EXAMPLES=OFF
           if ($LASTEXITCODE -ne 0) { throw 'zlib CMake configure failed' }
           cmake --build (Join-Path $deps 'zlib-build') --config Release
           if ($LASTEXITCODE -ne 0) { throw 'zlib CMake build failed' }
@@ -126,7 +130,7 @@ jobs:
           target_link_libraries(fm-surround PRIVATE vgm-player vgm-emu vgm-utils)
           '@ | Set-Content (Join-Path $cmakesrc 'CMakeLists.txt') -Encoding ascii
           $cmakebuild = Join-Path $deps 'fm-build'
-          cmake -S $cmakesrc -B $cmakebuild -G 'Visual Studio 17 2022' -A x64 -DZLIB_LIBRARY="$($zliblib.FullName)" -DZLIB_INCLUDE_DIR="$zlib" -DBUILD_LIBAUDIO=OFF -DBUILD_PLAYER=OFF -DBUILD_VGM2WAV=OFF -DBUILD_TESTS=OFF -DUSE_SANITIZERS=OFF
+          cmake -S $cmakesrc -B $cmakebuild -G $generator -A x64 -DZLIB_LIBRARY="$($zliblib.FullName)" -DZLIB_INCLUDE_DIR="$zlib" -DBUILD_LIBAUDIO=OFF -DBUILD_PLAYER=OFF -DBUILD_VGM2WAV=OFF -DBUILD_TESTS=OFF -DUSE_SANITIZERS=OFF
           if ($LASTEXITCODE -ne 0) { throw 'FM experiment configure failed' }
           cmake --build $cmakebuild --config Release --target fm-surround --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'FM experiment compilation failed' }
