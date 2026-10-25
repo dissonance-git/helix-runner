@@ -109,7 +109,7 @@ jobs:
           $zlib = Join-Path $deps 'zlib'
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
           $version = (& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion).Trim()
-          $generator = if ($version -match '^18\\.') { 'Visual Studio 18 2026' } elseif ($version -match '^17\\.') { 'Visual Studio 17 2022' } else { throw "Unsupported MSVC version: $version" }
+          $generator = if ($version.StartsWith('18.')) { 'Visual Studio 18 2026' } elseif ($version.StartsWith('17.')) { 'Visual Studio 17 2022' } else { throw "Unsupported MSVC version: $version" }
           Write-Host "FM_COMPILER_TOOLCHAIN version=$version generator=$generator"
           cmake -S $zlib -B (Join-Path $deps 'zlib-build') -G $generator -A x64 -DZLIB_BUILD_EXAMPLES=OFF
           if ($LASTEXITCODE -ne 0) { throw 'zlib CMake configure failed' }
