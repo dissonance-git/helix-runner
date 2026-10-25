@@ -1,0 +1,116 @@
+name: vgm-chip-spatial
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - vgm-request.json
+      - .github/workflows/vgm-chip-spatial.yml
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact private Omniphony GitLab commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: vgm-chip-spatial
+  cancel-in-progress: true
+
+jobs:
+  verify-cpp20:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Read public opaque request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve exact canonical SHA
+        shell: pwsh
+        id: request
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $sha = '${{ inputs.source_sha }}'
+          } else {
+            $request = Get-Content vgm-request.json -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ([string]$request.schema -ne 'omniphony-vgm-github-build-request/1') { throw 'Invalid request schema' }
+            $sha = [string]$request.source_sha
+          }
+          if ($sha -notmatch '^[0-9a-f]{40}$') { throw 'Invalid source SHA' }
+          "source_sha=$sha" >> $env:GITHUB_OUTPUT
+      - name: Retrieve bounded private VGM compile snapshot
+        id: source
+        shell: pwsh
+        env:
+          SOURCE_SHA: '${{ steps.request.outputs.source_sha }}'
+        run: |
+          $audience = 'helix-runner-source-relay'
+          $oidc = Invoke-RestMethod -Method Get -Uri "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=$audience" -Headers @{Authorization = "Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"}
+          if (-not $oidc.value) { throw 'GitHub OIDC unavailable' }
+          $body = @{action='read'; project_key='omniphony'; source_sha=$env:SOURCE_SHA} | ConvertTo-Json -Compress
+          $relay = 'https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/github-compile-source'
+          $snapshot = Invoke-RestMethod -Method Post -Uri $relay -Headers @{Authorization="Bearer $($oidc.value)"} -ContentType 'application/json' -Body $body
+          if ($snapshot.schema -ne 'helix/github-compile-source/2' -or $snapshot.project_key -ne 'omniphony' -or $snapshot.source_sha -ne $env:SOURCE_SHA) { throw 'Untrusted snapshot identity' }
+          $expected = @(
+            'modules/vgm/chip-spatial-bed-test.cpp',
+            'modules/vgm/foo_input_vgm/src/ChipHardwarePan.hpp',
+            'modules/vgm/foo_input_vgm/src/ChipSpatialBed.hpp'
+          )
+          if (@($snapshot.files).Count -ne $expected.Count) { throw 'Unapproved snapshot file count' }
+          $root = Join-Path $env:RUNNER_TEMP 'private-vgm-compile'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          foreach ($file in @($snapshot.files)) {
+            $relative = [string]$file.path
+            if ($relative -notin $expected) { throw "Disallowed private path: $relative" }
+            $dest = Join-Path $root $relative
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+            [IO.File]::WriteAllBytes($dest, [Convert]::FromBase64String([string]$file.content_b64))
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $dest).Hash.ToLowerInvariant()
+            if ($hash -ne [string]$file.sha256) { throw "File hash mismatch: $relative" }
+          }
+          "source_dir=$root" >> $env:GITHUB_OUTPUT
+          Write-Host "OMNIPHONy_VGM_PRIVATE_SOURCE_VERIFIED count=$($expected.Count) sha=$env:SOURCE_SHA"
+      - name: Compile and run C++20 chip-spatial tests with MSVC
+        shell: pwsh
+        working-directory: '${{ steps.source.outputs.source_dir }}'
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $install = (& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath).Trim()
+          if (-not $install) { throw 'MSVC not installed on hosted runner' }
+          $devcmd = Join-Path $install 'Common7/Tools/VsDevCmd.bat'
+          $command = ('"' + $devcmd + '" -arch=x64 -host_arch=x64 >nul && cl /nologo /std:c++20 /EHsc /W4 /Fe:chip-spatial-bed-test.exe modules\vgm\chip-spatial-bed-test.cpp && chip-spatial-bed-test.exe')
+          cmd.exe /d /s /c $command
+          if ($LASTEXITCODE -ne 0) { throw "MSVC spatial test failed: $LASTEXITCODE" }
+      - name: Store private-source-free compile receipt
+        shell: pwsh
+        env:
+          SOURCE_SHA: '${{ steps.request.outputs.source_sha }}'
+        run: |
+          $receipt = @{schema='omniphony/vgm-chip-spatial-test/1'; source_sha=$env:SOURCE_SHA; runner='github-hosted/windows-2025'; result='cpp20-msvc-pass'; completed_at=[DateTimeOffset]::UtcNow.ToString('O')}
+          $receipt | ConvertTo-Json | Set-Content -Path "$env:RUNNER_TEMP\chip-spatial-receipt.json" -Encoding UTF8
+      - name: Upload receipt only
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: omniphony-vgm-chip-spatial
+          path: '${{ runner.temp }}/chip-spatial-receipt.json'
+          retention-days: 2
+          if-no-files-found: error
+      - name: Delete transient private sources
+        if: always()
+        shell: pwsh
+        env:
+          SOURCE_SHA: '${{ steps.request.outputs.source_sha }}'
+          SOURCE_DIR: '${{ steps.source.outputs.source_dir }}'
+        run: |
+          if ($env:SOURCE_DIR -and (Test-Path -LiteralPath $env:SOURCE_DIR)) { Remove-Item -LiteralPath $env:SOURCE_DIR -Recurse -Force }
+          if ($env:SOURCE_SHA -notmatch '^[0-9a-f]{40}$') { return }
+          try {
+            $oidc = Invoke-RestMethod -Method Get -Uri "$env:ACTIONS_ID_TOKEN_REQUEST_URL&audience=helix-runner-source-relay" -Headers @{Authorization="Bearer $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN"}
+            $body = @{action='delete'; project_key='omniphony'; source_sha=$env:SOURCE_SHA} | ConvertTo-Json -Compress
+            Invoke-RestMethod -Method Post -Uri 'https://fpzqpoaeaydcrlvbxgwo.supabase.co/functions/v1/github-compile-source' -Headers @{Authorization="Bearer $($oidc.value)"} -ContentType 'application/json' -Body $body | Out-Null
+          } catch { Write-Warning "Transient source deletion failed: $($_.Exception.Message)" }
