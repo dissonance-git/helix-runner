@@ -1,6 +1,6 @@
 {
   "schema": "omniphony-vgm-github-build-request/1",
-  "source_sha": "45b0d8d14272f5e7f18c716c3784a065dccdae0c",
-  "attempt": 2,
-  "stage": "exact-gitlab-base64"
+  "source_sha": "f2e9fd9d0a07f372951dc4e3191af0794f4ff3f9",
+  "attempt": 3,
+  "stage": "crossfeed-exact-source"
 }
