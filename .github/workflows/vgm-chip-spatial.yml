@@ -57,6 +57,7 @@ jobs:
           $snapshot = Invoke-RestMethod -Method Post -Uri $relay -Headers @{Authorization="Bearer $($oidc.value)"} -ContentType 'application/json' -Body $body
           if ($snapshot.schema -ne 'helix/github-compile-source/2' -or $snapshot.project_key -ne 'omniphony' -or $snapshot.source_sha -ne $env:SOURCE_SHA) { throw 'Untrusted snapshot identity' }
           $expected = @(
+            'modules/vgm/ChipCrossfeed.hpp',
             'modules/vgm/chip-spatial-bed-test.cpp',
             'modules/vgm/foo_input_vgm/src/ChipHardwarePan.hpp',
             'modules/vgm/foo_input_vgm/src/ChipSpatialBed.hpp'
