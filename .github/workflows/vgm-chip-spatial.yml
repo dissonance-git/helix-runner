@@ -58,6 +58,8 @@ jobs:
           if ($snapshot.schema -ne 'helix/github-compile-source/2' -or $snapshot.project_key -ne 'omniphony' -or $snapshot.source_sha -ne $env:SOURCE_SHA) { throw 'Untrusted snapshot identity' }
           $expected = @(
             'modules/vgm/ChipCrossfeed.hpp',
+            'modules/vgm/ChipIsolationPlan.hpp',
+            'modules/vgm/ChipPcm71.hpp',
             'modules/vgm/chip-spatial-bed-test.cpp',
             'modules/vgm/foo_input_vgm/src/ChipHardwarePan.hpp',
             'modules/vgm/foo_input_vgm/src/ChipSpatialBed.hpp',
