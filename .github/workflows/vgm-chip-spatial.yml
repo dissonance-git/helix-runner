@@ -115,7 +115,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'zlib CMake configure failed' }
           cmake --build (Join-Path $deps 'zlib-build') --config Release
           if ($LASTEXITCODE -ne 0) { throw 'zlib CMake build failed' }
-          $zliblib = Get-ChildItem (Join-Path $deps 'zlib-build') -Recurse -Filter '*.lib' | Where-Object { $_.Name -in @('zs.lib','zlibstatic.lib','zlib.lib','zlibstaticd.lib') } | Select-Object -First 1
+          $zliblib = Get-ChildItem (Join-Path $deps 'zlib-build') -Recurse -Filter '*.lib' | Where-Object { $_.Name -in @('libzs.lib','zs.lib','zlibstatic.lib','zlib.lib','zlibstaticd.lib') } | Select-Object -First 1
           if (-not $zliblib) { throw 'zlib static library not found' }
           $cmakesrc = Join-Path $deps 'fm-experiment'
           New-Item -ItemType Directory -Force $cmakesrc | Out-Null
