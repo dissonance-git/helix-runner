@@ -64,7 +64,8 @@ jobs:
             'modules/vgm/chip-spatial-bed-test.cpp',
             'modules/vgm/foo_input_vgm/src/ChipHardwarePan.hpp',
             'modules/vgm/foo_input_vgm/src/ChipSpatialBed.hpp',
-            'modules/vgm/foo_input_vgm/src/ChipVoiceTimeline.hpp'
+            'modules/vgm/foo_input_vgm/src/ChipVoiceTimeline.hpp',
+            'modules/vgm/ym2612-fm-surround-experiment.cpp'
           )
           if (@($snapshot.files).Count -ne $expected.Count) { throw 'Unapproved snapshot file count' }
           $root = Join-Path $env:RUNNER_TEMP 'private-vgm-compile'
@@ -91,6 +92,60 @@ jobs:
           $command = ('"' + $devcmd + '" -arch=x64 -host_arch=x64 >nul && cl /nologo /std:c++20 /EHsc /W4 /Fe:chip-spatial-bed-test.exe modules\vgm\chip-spatial-bed-test.cpp && chip-spatial-bed-test.exe')
           cmd.exe /d /s /c $command
           if ($LASTEXITCODE -ne 0) { throw "MSVC spatial test failed: $LASTEXITCODE" }
+      - name: Build and run real two-voice YM2612 libvgm surround experiment
+        id: fm
+        shell: pwsh
+        env:
+          VGM_PRIVATE_SOURCE: '${{ steps.source.outputs.source_dir }}'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deps = Join-Path $env:RUNNER_TEMP 'fm-public-deps'
+          New-Item -ItemType Directory -Force $deps | Out-Null
+          git clone --depth 1 https://github.com/ValleyBell/libvgm.git (Join-Path $deps 'libvgm')
+          if ($LASTEXITCODE -ne 0) { throw 'libvgm checkout failed' }
+          git clone --depth 1 https://github.com/madler/zlib.git (Join-Path $deps 'zlib')
+          if ($LASTEXITCODE -ne 0) { throw 'zlib checkout failed' }
+          $libvgm = Join-Path $deps 'libvgm'
+          $zlib = Join-Path $deps 'zlib'
+          cmake -S $zlib -B (Join-Path $deps 'zlib-build') -G 'Visual Studio 17 2022' -A x64 -DZLIB_BUILD_EXAMPLES=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'zlib CMake configure failed' }
+          cmake --build (Join-Path $deps 'zlib-build') --config Release
+          if ($LASTEXITCODE -ne 0) { throw 'zlib CMake build failed' }
+          $zliblib = Get-ChildItem (Join-Path $deps 'zlib-build') -Recurse -Filter '*.lib' | Where-Object { $_.Name -in @('zs.lib','zlibstatic.lib','zlib.lib','zlibstaticd.lib') } | Select-Object -First 1
+          if (-not $zliblib) { throw 'zlib static library not found' }
+          $cmakesrc = Join-Path $deps 'fm-experiment'
+          New-Item -ItemType Directory -Force $cmakesrc | Out-Null
+          $env:VGM_BUILD_LIBVGM = $libvgm
+          @'
+          cmake_minimum_required(VERSION 3.20)
+          project(ym2612_spatial_experiment LANGUAGES C CXX)
+          add_subdirectory("$ENV{VGM_BUILD_LIBVGM}" libvgm-build EXCLUDE_FROM_ALL)
+          add_executable(fm-surround "$ENV{VGM_PRIVATE_SOURCE}/modules/vgm/ym2612-fm-surround-experiment.cpp")
+          target_include_directories(fm-surround PRIVATE "$ENV{VGM_BUILD_LIBVGM}")
+          target_compile_features(fm-surround PRIVATE cxx_std_20)
+          target_link_libraries(fm-surround PRIVATE vgm-player vgm-emu vgm-utils)
+          '@ | Set-Content (Join-Path $cmakesrc 'CMakeLists.txt') -Encoding ascii
+          $cmakebuild = Join-Path $deps 'fm-build'
+          cmake -S $cmakesrc -B $cmakebuild -G 'Visual Studio 17 2022' -A x64 -DZLIB_LIBRARY="$($zliblib.FullName)" -DZLIB_INCLUDE_DIR="$zlib" -DBUILD_LIBAUDIO=OFF -DBUILD_PLAYER=OFF -DBUILD_VGM2WAV=OFF -DBUILD_TESTS=OFF -DUSE_SANITIZERS=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'FM experiment configure failed' }
+          cmake --build $cmakebuild --config Release --target fm-surround --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'FM experiment compilation failed' }
+          $exe = Get-ChildItem $cmakebuild -Recurse -Filter 'fm-surround.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'FM experiment executable not found' }
+          $wav = Join-Path $env:RUNNER_TEMP 'ym2612-real-emulator-7.1.wav'
+          & $exe.FullName $wav
+          if ($LASTEXITCODE -ne 0) { throw "Real YM2612 experiment failed: $LASTEXITCODE" }
+          if (-not (Test-Path $wav)) { throw 'No 7.1 synthetic demo WAV produced' }
+          Write-Host "FM_EMULATOR_EXPERIMENT_VERIFIED $wav"
+          'fm_pass=true' >> $env:GITHUB_OUTPUT
+      - name: Upload synthetic FM surround demo
+        if: steps.fm.outputs.fm_pass == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ym2612-real-emulator-7-1-wav
+          path: '${{ runner.temp }}/ym2612-real-emulator-7.1.wav'
+          retention-days: 7
+          if-no-files-found: error
       - name: Store private-source-free compile receipt
         shell: pwsh
         env:
