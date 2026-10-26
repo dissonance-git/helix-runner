@@ -105,7 +105,9 @@ jobs:
             'modules/vgm/foo_input_vgm/src/my_view_parent.cpp',
             'modules/vgm/foo_input_vgm/src/resource.h',
             'modules/vgm/foo_input_vgm/src/stdafx.cpp',
-            'modules/vgm/foo_input_vgm/src/stdafx.h'
+            'modules/vgm/foo_input_vgm/src/stdafx.h',
+            'modules/vgm/foo_input_vgm/foo_input_vgm.sln',
+            'modules/vgm/foo_input_vgm/foo_input_vgm.vcxproj'
           )
           if (@($snapshot.files).Count -ne $expected.Count) { throw 'Unapproved snapshot file count' }
           $root = Join-Path $env:RUNNER_TEMP 'private-vgm-compile'
@@ -221,6 +223,53 @@ jobs:
 
 
           'fm_pass=true' >> $env:GITHUB_OUTPUT
+      - name: Compile real VGM foobar component interface against official SDK 2026
+        shell: pwsh
+        env:
+          VGM_PRIVATE_SOURCE: '${{ steps.source.outputs.source_dir }}'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deps = Join-Path $env:RUNNER_TEMP 'fm-public-deps'
+          git clone --depth 1 https://github.com/Win32-WTL/WTL.git (Join-Path $deps 'WTL')
+          if ($LASTEXITCODE -ne 0) { throw 'WTL fetch failed' }
+          $sdkZip = Join-Path $deps 'official-foobar-sdk.7z'
+          Invoke-WebRequest -Uri 'https://www.foobar2000.org/downloads/SDK-2026-10-01.7z' -OutFile $sdkZip -UseBasicParsing
+          $sdkFiles = Join-Path $deps 'official-foobar-sdk'
+          New-Item -ItemType Directory -Force -Path $sdkFiles | Out-Null
+          & 7z.exe x $sdkZip ('-o' + $sdkFiles) -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'foobar SDK unpack failed' }
+          $sdkProject = Get-ChildItem $sdkFiles -Recurse -Filter 'foobar2000_SDK.vcxproj' | Select-Object -First 1
+          if (-not $sdkProject) { throw 'foobar SDK project absent' }
+          $sdkRoot = (Get-Item $sdkProject.Directory.Parent.Parent.FullName).FullName
+          Write-Host "FOOBAR_SDK_2026_ROOT $sdkRoot"
+          $root = $env:VGM_PRIVATE_SOURCE
+          $links = @(
+            @('modules/pfc', (Join-Path $sdkRoot 'pfc')),
+            @('modules/libPPUI', (Join-Path $sdkRoot 'libPPUI')),
+            @('modules/libvgm', (Join-Path $deps 'libvgm')),
+            @('modules/WTL', (Join-Path $deps 'WTL')),
+            @('modules/zlib', (Join-Path $deps 'zlib')),
+            @('modules/vgm/SDK', (Join-Path $sdkRoot 'foobar2000/SDK')),
+            @('modules/vgm/helpers', (Join-Path $sdkRoot 'foobar2000/helpers')),
+            @('modules/vgm/foobar2000_component_client', (Join-Path $sdkRoot 'foobar2000/foobar2000_component_client')),
+            @('modules/vgm/shared', (Join-Path $sdkRoot 'foobar2000/shared'))
+          )
+          foreach ($link in $links) {
+            $destination = Join-Path $root $link[0]
+            $target = $link[1]
+            if (-not (Test-Path $target)) { throw "SDK dependency missing: $target" }
+            New-Item -ItemType Junction -Path $destination -Target $target -Force | Out-Null
+          }
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $install = (& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath).Trim()
+          $devcmd = Join-Path $install 'Common7/Tools/VsDevCmd.bat'
+          $project = Join-Path $root 'modules/vgm/foo_input_vgm'
+          $object = Join-Path $env:RUNNER_TEMP 'vgm_input_base_sdk2026.obj'
+          $cmd = ('"' + $devcmd + '" -arch=x64 -host_arch=x64 >nul && cd /d "' + $project + '" && cl /nologo /std:c++20 /EHsc /MD /W3 /DWINVER=0x0A00 /D_WIN32_WINNT=0x0A00 /D_WINDOWS /FI"src\\stdafx.h" /I"src" /I"." /I".." /I"..\\.." /I"..\\..\\libvgm" /I"..\\..\\WTL\\include" /I"..\\..\\zlib" /c /Fo:"' + $object + '" src\\input_base.cpp')
+          cmd.exe /d /s /c $cmd
+          if ($LASTEXITCODE -ne 0) { throw "VGM SDK 2026 interface compile rejected: $LASTEXITCODE" }
+          if (-not (Test-Path $object)) { throw 'SDK 2026 object file was not produced' }
+          Write-Host "VGM_INPUT_BASE_SDK2026_CPP20_COMPILE_PASS"
       - name: Upload synthetic FM surround demo
         if: steps.fm.outputs.fm_pass == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
