@@ -66,7 +66,9 @@ jobs:
             'modules/vgm/foo_input_vgm/src/ChipVoiceTimeline.hpp',
             'modules/vgm/ym2612-fm-surround-experiment.cpp',
             'modules/vgm/ym2612-full-chip-surround-experiment.cpp',
-            'modules/vgm/ym2151-sn76489-mixed-surround-experiment.cpp'
+            'modules/vgm/ym2151-sn76489-mixed-surround-experiment.cpp',
+            'modules/vgm/LiveVgmSurround71.hpp',
+            'modules/vgm/live-vgm-surround71-test.cpp'
           )
           if (@($snapshot.files).Count -ne $expected.Count) { throw 'Unapproved snapshot file count' }
           $root = Join-Path $env:RUNNER_TEMP 'private-vgm-compile'
@@ -137,6 +139,10 @@ jobs:
           target_include_directories(mixed-fm-psg PRIVATE "$ENV{VGM_BUILD_LIBVGM}")
           target_compile_features(mixed-fm-psg PRIVATE cxx_std_20)
           target_link_libraries(mixed-fm-psg PRIVATE vgm-player vgm-emu vgm-utils)
+          add_executable(live-vgm-71 "$ENV{VGM_PRIVATE_SOURCE}/modules/vgm/live-vgm-surround71-test.cpp")
+          target_include_directories(live-vgm-71 PRIVATE "$ENV{VGM_BUILD_LIBVGM}")
+          target_compile_features(live-vgm-71 PRIVATE cxx_std_20)
+          target_link_libraries(live-vgm-71 PRIVATE vgm-player vgm-emu vgm-utils)
           '@ | Set-Content (Join-Path $cmakesrc 'CMakeLists.txt') -Encoding ascii
           $cmakebuild = Join-Path $deps 'fm-build'
           cmake -S $cmakesrc -B $cmakebuild -G $generator -A x64 -DZLIB_LIBRARY="$($zliblib.FullName)" -DZLIB_INCLUDE_DIR="$zlib" -DBUILD_LIBAUDIO=OFF -DBUILD_PLAYER=OFF -DBUILD_VGM2WAV=OFF -DBUILD_TESTS=OFF -DUSE_SANITIZERS=OFF -DUTIL_CHARCNV_ICONV=OFF -DUTIL_CHARCNV_WINAPI=ON
@@ -168,6 +174,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "YM2151/SN76489 real-core test failed: $LASTEXITCODE" }
           if (-not (Test-Path $mixedwav)) { throw 'YM2151/SN76489 7.1 WAV missing' }
           Write-Host "YM2151_SN76489_MIXED_VERIFIED $mixedwav"
+          cmake --build $cmakebuild --config Release --target live-vgm-71 --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'Live native 7.1 source engine compilation failed' }
+          $live = Get-ChildItem $cmakebuild -Recurse -Filter 'live-vgm-71.exe' | Select-Object -First 1
+          if (-not $live) { throw 'Live native 7.1 source engine executable missing' }
+          & $live.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Live native 7.1 real-chip test failed: $LASTEXITCODE" }
+          Write-Host "LIVE_VGM_71_ENGINE_VERIFIED"
 
 
           'fm_pass=true' >> $env:GITHUB_OUTPUT
