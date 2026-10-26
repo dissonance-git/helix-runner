@@ -64,7 +64,8 @@ jobs:
             'modules/vgm/foo_input_vgm/src/ChipHardwarePan.hpp',
             'modules/vgm/foo_input_vgm/src/ChipSpatialBed.hpp',
             'modules/vgm/foo_input_vgm/src/ChipVoiceTimeline.hpp',
-            'modules/vgm/ym2612-fm-surround-experiment.cpp'
+            'modules/vgm/ym2612-fm-surround-experiment.cpp',
+            'modules/vgm/ym2612-full-chip-surround-experiment.cpp'
           )
           if (@($snapshot.files).Count -ne $expected.Count) { throw 'Unapproved snapshot file count' }
           $root = Join-Path $env:RUNNER_TEMP 'private-vgm-compile'
@@ -127,6 +128,10 @@ jobs:
           target_include_directories(fm-surround PRIVATE "$ENV{VGM_BUILD_LIBVGM}")
           target_compile_features(fm-surround PRIVATE cxx_std_20)
           target_link_libraries(fm-surround PRIVATE vgm-player vgm-emu vgm-utils)
+          add_executable(fm-full "$ENV{VGM_PRIVATE_SOURCE}/modules/vgm/ym2612-full-chip-surround-experiment.cpp")
+          target_include_directories(fm-full PRIVATE "$ENV{VGM_BUILD_LIBVGM}")
+          target_compile_features(fm-full PRIVATE cxx_std_20)
+          target_link_libraries(fm-full PRIVATE vgm-player vgm-emu vgm-utils)
           '@ | Set-Content (Join-Path $cmakesrc 'CMakeLists.txt') -Encoding ascii
           $cmakebuild = Join-Path $deps 'fm-build'
           cmake -S $cmakesrc -B $cmakebuild -G $generator -A x64 -DZLIB_LIBRARY="$($zliblib.FullName)" -DZLIB_INCLUDE_DIR="$zlib" -DBUILD_LIBAUDIO=OFF -DBUILD_PLAYER=OFF -DBUILD_VGM2WAV=OFF -DBUILD_TESTS=OFF -DUSE_SANITIZERS=OFF -DUTIL_CHARCNV_ICONV=OFF -DUTIL_CHARCNV_WINAPI=ON
@@ -140,6 +145,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Real YM2612 experiment failed: $LASTEXITCODE" }
           if (-not (Test-Path $wav)) { throw 'No 7.1 synthetic demo WAV produced' }
           Write-Host "FM_EMULATOR_EXPERIMENT_VERIFIED $wav"
+          cmake --build $cmakebuild --config Release --target fm-full --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'Six-channel FM/DAC experiment compilation failed' }
+          $full = Get-ChildItem $cmakebuild -Recurse -Filter 'fm-full.exe' | Select-Object -First 1
+          if (-not $full) { throw 'Six-channel FM/DAC executable missing' }
+          $fullwav = Join-Path $env:RUNNER_TEMP 'ym2612-six-fm-7.1.wav'
+          & $full.FullName $fullwav
+          if ($LASTEXITCODE -ne 0) { throw "FM6/DAC/CH3 real-core experiment failed: $LASTEXITCODE" }
+          if (-not (Test-Path $fullwav)) { throw 'Six-FM 7.1 WAV missing' }
+          Write-Host "YM2612_FULL_CHIP_VERIFIED $fullwav"
+
           'fm_pass=true' >> $env:GITHUB_OUTPUT
       - name: Upload synthetic FM surround demo
         if: steps.fm.outputs.fm_pass == 'true'
@@ -147,6 +162,7 @@ jobs:
         with:
           name: ym2612-real-emulator-7-1-wav
           path: '${{ runner.temp }}/ym2612-real-emulator-7.1.wav'
+            ${{ runner.temp }}/ym2612-six-fm-7.1.wav
           retention-days: 7
           if-no-files-found: error
       - name: Store private-source-free compile receipt
