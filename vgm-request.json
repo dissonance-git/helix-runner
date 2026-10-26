@@ -1,6 +1,6 @@
 {
   "schema": "omniphony-vgm-github-build-request/1",
   "source_sha": "514bb7b83b8653ebcc0593b9b06a9c7c40988944",
-  "attempt": 11,
-  "stage": "six-fm-dac-channel3-special"
+  "attempt": 12,
+  "stage": "six-fm-dac-special-workflow-yaml-fixed"
 }
