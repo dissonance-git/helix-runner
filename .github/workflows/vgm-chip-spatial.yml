@@ -129,7 +129,7 @@ jobs:
           target_link_libraries(fm-surround PRIVATE vgm-player vgm-emu vgm-utils)
           '@ | Set-Content (Join-Path $cmakesrc 'CMakeLists.txt') -Encoding ascii
           $cmakebuild = Join-Path $deps 'fm-build'
-          cmake -S $cmakesrc -B $cmakebuild -G $generator -A x64 -DZLIB_LIBRARY="$($zliblib.FullName)" -DZLIB_INCLUDE_DIR="$zlib" -DBUILD_LIBAUDIO=OFF -DBUILD_PLAYER=OFF -DBUILD_VGM2WAV=OFF -DBUILD_TESTS=OFF -DUSE_SANITIZERS=OFF
+          cmake -S $cmakesrc -B $cmakebuild -G $generator -A x64 -DZLIB_LIBRARY="$($zliblib.FullName)" -DZLIB_INCLUDE_DIR="$zlib" -DBUILD_LIBAUDIO=OFF -DBUILD_PLAYER=OFF -DBUILD_VGM2WAV=OFF -DBUILD_TESTS=OFF -DUSE_SANITIZERS=OFF -DUTIL_CHARCNV_ICONV=OFF -DUTIL_CHARCNV_WINAPI=ON
           if ($LASTEXITCODE -ne 0) { throw 'FM experiment configure failed' }
           cmake --build $cmakebuild --config Release --target fm-surround --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'FM experiment compilation failed' }
