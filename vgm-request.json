@@ -1,6 +1,6 @@
 {
   "schema": "omniphony-vgm-github-build-request/1",
-  "source_sha": "514bb7b83b8653ebcc0593b9b06a9c7c40988944",
-  "attempt": 12,
-  "stage": "six-fm-dac-special-workflow-yaml-fixed"
+  "source_sha": "b7cb54dd3990502d9ad6008a9fc28c0cd73a32e8",
+  "attempt": 13,
+  "stage": "ym2151-sn76489-twelve-voice-mixed-chip"
 }
