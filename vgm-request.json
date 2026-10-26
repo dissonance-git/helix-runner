@@ -1,6 +1,6 @@
 {
   "schema": "omniphony-vgm-github-build-request/1",
-  "source_sha": "4c1572343a79e33395c60d9c74fb4c3dc5ae4154",
-  "attempt": 16,
-  "stage": "official-sdk2026-legacy-wtl-lookup"
+  "source_sha": "d26f8ce07c86772fc00e233d5c266e60d74caa3d",
+  "attempt": 17,
+  "stage": "sdk2026-configstore-migration-native7point1-vgm"
 }
