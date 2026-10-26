@@ -65,7 +65,8 @@ jobs:
             'modules/vgm/foo_input_vgm/src/ChipSpatialBed.hpp',
             'modules/vgm/foo_input_vgm/src/ChipVoiceTimeline.hpp',
             'modules/vgm/ym2612-fm-surround-experiment.cpp',
-            'modules/vgm/ym2612-full-chip-surround-experiment.cpp'
+            'modules/vgm/ym2612-full-chip-surround-experiment.cpp',
+            'modules/vgm/ym2151-sn76489-mixed-surround-experiment.cpp'
           )
           if (@($snapshot.files).Count -ne $expected.Count) { throw 'Unapproved snapshot file count' }
           $root = Join-Path $env:RUNNER_TEMP 'private-vgm-compile'
@@ -132,6 +133,10 @@ jobs:
           target_include_directories(fm-full PRIVATE "$ENV{VGM_BUILD_LIBVGM}")
           target_compile_features(fm-full PRIVATE cxx_std_20)
           target_link_libraries(fm-full PRIVATE vgm-player vgm-emu vgm-utils)
+          add_executable(mixed-fm-psg "$ENV{VGM_PRIVATE_SOURCE}/modules/vgm/ym2151-sn76489-mixed-surround-experiment.cpp")
+          target_include_directories(mixed-fm-psg PRIVATE "$ENV{VGM_BUILD_LIBVGM}")
+          target_compile_features(mixed-fm-psg PRIVATE cxx_std_20)
+          target_link_libraries(mixed-fm-psg PRIVATE vgm-player vgm-emu vgm-utils)
           '@ | Set-Content (Join-Path $cmakesrc 'CMakeLists.txt') -Encoding ascii
           $cmakebuild = Join-Path $deps 'fm-build'
           cmake -S $cmakesrc -B $cmakebuild -G $generator -A x64 -DZLIB_LIBRARY="$($zliblib.FullName)" -DZLIB_INCLUDE_DIR="$zlib" -DBUILD_LIBAUDIO=OFF -DBUILD_PLAYER=OFF -DBUILD_VGM2WAV=OFF -DBUILD_TESTS=OFF -DUSE_SANITIZERS=OFF -DUTIL_CHARCNV_ICONV=OFF -DUTIL_CHARCNV_WINAPI=ON
@@ -154,6 +159,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "FM6/DAC/CH3 real-core experiment failed: $LASTEXITCODE" }
           if (-not (Test-Path $fullwav)) { throw 'Six-FM 7.1 WAV missing' }
           Write-Host "YM2612_FULL_CHIP_VERIFIED $fullwav"
+          cmake --build $cmakebuild --config Release --target mixed-fm-psg --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'YM2151/SN76489 test compilation failed' }
+          $mixed = Get-ChildItem $cmakebuild -Recurse -Filter 'mixed-fm-psg.exe' | Select-Object -First 1
+          if (-not $mixed) { throw 'YM2151/SN76489 test exe missing' }
+          $mixedwav = Join-Path $env:RUNNER_TEMP 'ym2151-sn76489-mixed-7.1.wav'
+          & $mixed.FullName $mixedwav
+          if ($LASTEXITCODE -ne 0) { throw "YM2151/SN76489 real-core test failed: $LASTEXITCODE" }
+          if (-not (Test-Path $mixedwav)) { throw 'YM2151/SN76489 7.1 WAV missing' }
+          Write-Host "YM2151_SN76489_MIXED_VERIFIED $mixedwav"
+
 
           'fm_pass=true' >> $env:GITHUB_OUTPUT
       - name: Upload synthetic FM surround demo
@@ -164,6 +179,7 @@ jobs:
           path: |
             ${{ runner.temp }}/ym2612-real-emulator-7.1.wav
             ${{ runner.temp }}/ym2612-six-fm-7.1.wav
+            ${{ runner.temp }}/ym2151-sn76489-mixed-7.1.wav
           retention-days: 7
           if-no-files-found: error
       - name: Store private-source-free compile receipt
