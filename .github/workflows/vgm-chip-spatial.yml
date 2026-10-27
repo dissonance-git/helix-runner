@@ -243,9 +243,11 @@ jobs:
           # Keep this compatibility fix ephemeral; never publish SDK or private code.
           $wtlHeader = Join-Path $deps 'WTL/Include/atlctrls.h'
           $wtlText = [IO.File]::ReadAllText($wtlHeader)
-          $wtlMatch = '(?m)(class CButtonT : public TBase\r?\n\{\r?\npublic:)'
-          if (-not [regex]::IsMatch($wtlText,$wtlMatch)) { throw 'Upstream WTL compatibility anchor changed' }
+          $wtlMatch = '(?m)(class C[A-Za-z0-9_]+T : public TBase\r?\n\{\r?\npublic:)'
+          $wtlClasses = [regex]::Matches($wtlText,$wtlMatch).Count
+          if ($wtlClasses -lt 4) { throw "Unexpected WTL template base layout: $wtlClasses wrappers" }
           $wtlText = [regex]::Replace($wtlText,$wtlMatch,('$1' + "`r`n" + '    using TBase::m_hWnd;'))
+          Write-Host "WTL_MSVC2026_WRAPPERS_FIXED $wtlClasses"
           [IO.File]::WriteAllText($wtlHeader, $wtlText)
           Write-Host 'WTL_MSVC2026_DEPENDENT_BASE_FIX'
           $sdkZip = Join-Path $deps 'official-foobar-sdk.7z'
