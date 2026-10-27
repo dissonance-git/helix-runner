@@ -243,8 +243,8 @@ jobs:
           # Keep this compatibility fix ephemeral; never publish SDK or private code.
           $wtlHeader = Join-Path $deps 'WTL/Include/atlctrls.h'
           $wtlText = [IO.File]::ReadAllText($wtlHeader)
-          $wtlOld = '::SendMessage(m_hWnd, BM_SETCHECK, nCheck, 0L);'
-          $wtlNew = '::SendMessage(this->m_hWnd, BM_SETCHECK, nCheck, 0L);'
+          $wtlOld = 'class CButtonT : public TBase' + "`r`n" + '{' + "`r`n" + 'public:'
+          $wtlNew = 'class CButtonT : public TBase' + "`r`n" + '{' + "`r`n" + 'public:' + "`r`n" + '    using TBase::m_hWnd;'
           if (-not $wtlText.Contains($wtlOld)) { throw 'Upstream WTL compatibility anchor changed' }
           [IO.File]::WriteAllText($wtlHeader, $wtlText.Replace($wtlOld,$wtlNew))
           Write-Host 'WTL_MSVC2026_DEPENDENT_BASE_FIX'
