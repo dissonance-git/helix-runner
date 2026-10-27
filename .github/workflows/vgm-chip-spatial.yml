@@ -238,6 +238,16 @@ jobs:
           $deps = Join-Path $env:RUNNER_TEMP 'fm-public-deps'
           git clone --depth 1 https://github.com/Win32-WTL/WTL.git (Join-Path $deps 'WTL')
           if ($LASTEXITCODE -ne 0) { throw 'WTL fetch failed' }
+          # Win32-WTL CButtonT inherits the window handle from dependent TBase.
+          # MSVC 2026 requires explicit this-> in the instantiated SetCheck.
+          # Keep this compatibility fix ephemeral; never publish SDK or private code.
+          $wtlHeader = Join-Path $deps 'WTL/Include/atlctrls.h'
+          $wtlText = [IO.File]::ReadAllText($wtlHeader)
+          $wtlOld = '::SendMessage(m_hWnd, BM_SETCHECK, nCheck, 0L);'
+          $wtlNew = '::SendMessage(this->m_hWnd, BM_SETCHECK, nCheck, 0L);'
+          if (-not $wtlText.Contains($wtlOld)) { throw 'Upstream WTL compatibility anchor changed' }
+          [IO.File]::WriteAllText($wtlHeader, $wtlText.Replace($wtlOld,$wtlNew))
+          Write-Host 'WTL_MSVC2026_DEPENDENT_BASE_FIX'
           $sdkZip = Join-Path $deps 'official-foobar-sdk.7z'
           Invoke-WebRequest -Uri 'https://www.foobar2000.org/downloads/SDK-2026-10-01.7z' -OutFile $sdkZip -UseBasicParsing
           $sdkFiles = Join-Path $deps 'official-foobar-sdk'
