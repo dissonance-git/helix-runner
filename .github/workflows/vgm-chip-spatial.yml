@@ -243,10 +243,10 @@ jobs:
           # Keep this compatibility fix ephemeral; never publish SDK or private code.
           $wtlHeader = Join-Path $deps 'WTL/Include/atlctrls.h'
           $wtlText = [IO.File]::ReadAllText($wtlHeader)
-          $wtlOld = 'class CButtonT : public TBase' + "`r`n" + '{' + "`r`n" + 'public:'
-          $wtlNew = 'class CButtonT : public TBase' + "`r`n" + '{' + "`r`n" + 'public:' + "`r`n" + '    using TBase::m_hWnd;'
-          if (-not $wtlText.Contains($wtlOld)) { throw 'Upstream WTL compatibility anchor changed' }
-          [IO.File]::WriteAllText($wtlHeader, $wtlText.Replace($wtlOld,$wtlNew))
+          $wtlMatch = '(?m)(class CButtonT : public TBase\r?\n\{\r?\npublic:)'
+          if (-not [regex]::IsMatch($wtlText,$wtlMatch)) { throw 'Upstream WTL compatibility anchor changed' }
+          $wtlText = [regex]::Replace($wtlText,$wtlMatch,('$1' + "`r`n" + '    using TBase::m_hWnd;'))
+          [IO.File]::WriteAllText($wtlHeader, $wtlText)
           Write-Host 'WTL_MSVC2026_DEPENDENT_BASE_FIX'
           $sdkZip = Join-Path $deps 'official-foobar-sdk.7z'
           Invoke-WebRequest -Uri 'https://www.foobar2000.org/downloads/SDK-2026-10-01.7z' -OutFile $sdkZip -UseBasicParsing
