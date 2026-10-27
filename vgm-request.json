@@ -1,6 +1,6 @@
 {
   "schema": "omniphony-vgm-github-build-request/1",
   "source_sha": "34578a263d0be27cd2426798a5f7d5d23815b669",
-  "attempt": 19,
-  "stage": "upstream-libvgm-and-sdk2026-wtl-hotfix"
+  "attempt": 20,
+  "stage": "libvgm-upstream-audit-and-wtl-class-scope-msvc-retry"
 }
