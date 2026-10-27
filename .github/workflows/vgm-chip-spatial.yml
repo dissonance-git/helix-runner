@@ -60,6 +60,8 @@ jobs:
             'modules/vgm/ChipIsolationDispatch.hpp',
             'modules/vgm/ChipIsolationPlan.hpp',
             'modules/vgm/ChipPcm71.hpp',
+            'modules/vgm/QSoundBusLayout.hpp',
+            'modules/vgm/qsound-bus-contract-test.cpp',
             'modules/vgm/chip-spatial-bed-test.cpp',
             'modules/vgm/foo_input_vgm/src/ChipHardwarePan.hpp',
             'modules/vgm/foo_input_vgm/src/ChipSpatialBed.hpp',
@@ -134,6 +136,10 @@ jobs:
           $command = ('"' + $devcmd + '" -arch=x64 -host_arch=x64 >nul && cl /nologo /std:c++20 /EHsc /W4 /Fe:chip-spatial-bed-test.exe modules\vgm\chip-spatial-bed-test.cpp && chip-spatial-bed-test.exe')
           cmd.exe /d /s /c $command
           if ($LASTEXITCODE -ne 0) { throw "MSVC spatial test failed: $LASTEXITCODE" }
+          $qcmd = ('"' + $devcmd + '" -arch=x64 -host_arch=x64 >nul && cl /nologo /std:c++20 /EHsc /W4 /Fe:qsound-bus-contract-test.exe modules\vgm\qsound-bus-contract-test.cpp && qsound-bus-contract-test.exe')
+          cmd.exe /d /s /c $qcmd
+          if ($LASTEXITCODE -ne 0) { throw "QSound bus unit test failed: $LASTEXITCODE" }
+          Write-Host "QSOUND_CONTRACT_MSVC_VERIFIED"
       - name: Build and run real two-voice YM2612 libvgm surround experiment
         id: fm
         shell: pwsh
