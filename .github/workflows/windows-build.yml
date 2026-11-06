@@ -270,7 +270,7 @@ jobs:
           Write-Host "OMNIPHONY_WINDOWS_PRODUCT_ARTIFACT_OK bytes=$Bytes sha256=$Hash route=legacy-fallback"
 
       - name: Upload single-executable Windows product
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: "OmniphonySetup-${{ steps.source.outputs.short_sha }}"
           path: "${{ steps.product.outputs.product }}"
@@ -302,7 +302,7 @@ jobs:
           Write-Host "OMNIPHONY_GITHUB_COMPILE_OK sha=$env:SOURCE_SHA"
 
       - name: Upload compile receipt
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: "omniphony-compile-${{ steps.source.outputs.short_sha }}"
           path: "${{ runner.temp }}/omniphony-compile-receipt.json"
